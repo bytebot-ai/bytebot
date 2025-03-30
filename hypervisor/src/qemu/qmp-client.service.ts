@@ -30,7 +30,7 @@ export class QmpClientService
   }
 
   async onModuleInit() {
-    await this.connectWithRetry();
+    // await this.connectWithRetry();
   }
 
   onModuleDestroy() {
