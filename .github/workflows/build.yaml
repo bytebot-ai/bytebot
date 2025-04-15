@@ -12,6 +12,9 @@ permissions:
 jobs:
     docker:
         runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                platform: [linux/amd64, linux/arm64]
         steps:
             - uses: actions/checkout@v4
 
@@ -23,7 +26,7 @@ jobs:
               uses: docker/metadata-action@v5
               with:
                   images: |
-                      ghcr.io/bytebot-ai/${{ matrix.image }}
+                      ghcr.io/bytebot-ai/bytebot
                   tags: |
                       type=sha
                       type=edge
@@ -41,6 +44,7 @@ jobs:
               with:
                   push: true
                   context: .
+                  platforms: ${{ matrix.platform }}
                   cache-from: type=gha
                   cache-to: 'type=gha,mode=max'
                   tags: '${{ steps.meta.outputs.tags }}'
