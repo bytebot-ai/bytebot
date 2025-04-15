@@ -54,9 +54,10 @@ Getting started with Bytebot is simple and straightforward. You can run it as a 
         Navigate to `http://localhost:9990/vnc` in your web browser for noVNC access.
       </Accordion>
     </AccordionGroup>
+
   </Accordion>
 
-  <Accordion icon="robot" title="Running the Full Agent System (Recommended)">
+  <Accordion icon="robot" title="Running the Full Agent System (Alpha)">
     <AccordionGroup>
       <Accordion icon="key" title="Setting Up Environment Variables">
         Create a `.env` file with your Anthropic API key:
@@ -99,6 +100,7 @@ Getting started with Bytebot is simple and straightforward. You can run it as a 
         - **Bytebot Chat UI**: `http://localhost:9992`
       </Accordion>
     </AccordionGroup>
+
   </Accordion>
 </AccordionGroup>
 
@@ -177,7 +179,11 @@ When running the full agent system, you can interact with Bytebot through a chat
 3. View the desktop in real-time as the agent performs actions
 4. Monitor task progress and results
 
-<img src="/static/chat-ui-example.png" alt="Bytebot Chat UI" className="w-full max-w-4xl" />
+<img
+  src="/static/chat-ui-example.png"
+  alt="Bytebot Chat UI"
+  className="w-full max-w-4xl"
+/>
 
 ## Next Steps
 
@@ -198,18 +204,10 @@ Now that you have Bytebot up and running, here are some next steps:
   >
     Discover details about the containerized desktop environment
   </Card>
-  <Card
-    title="Agent System"
-    icon="robot" 
-    href="/core-concepts/agent-system"
-  >
+  <Card title="Agent System" icon="robot" href="/core-concepts/agent-system">
     Learn about the agent task management system
   </Card>
-  <Card
-    title="API Reference"
-    icon="code"
-    href="/api-reference/agent/tasks"
-  >
+  <Card title="API Reference" icon="code" href="/api-reference/agent/tasks">
     Explore the Agent API for task management
   </Card>
 </CardGroup>

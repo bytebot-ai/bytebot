@@ -37,7 +37,7 @@ For full documentation, visit [**docs.bytebot.ai**](https://docs.bytebot.ai)
 ./scripts/run.sh
 ```
 
-#### Full Agent Setup (Recommended)
+#### Full Agent Setup (Alpha)
 
 ```bash
 # Create .env file with your Anthropic API key
