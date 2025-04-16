@@ -52,6 +52,33 @@ Move the mouse cursor to a specific position.
 }
 ```
 
+### trace_mouse
+
+Move the mouse along a path of coordinates.
+
+**Parameters:**
+
+| Parameter    | Type   | Required | Description                                     |
+| ------------ | ------ | -------- | ----------------------------------------------- |
+| `path`       | Array  | Yes      | Array of coordinate objects for the mouse path  |
+| `path[].x`   | Number | Yes      | X coordinate for each point in the path         |
+| `path[].y`   | Number | Yes      | Y coordinate for each point in the path         |
+| `holdKeys`   | Array  | No       | Keys to hold while moving along the path        |
+
+**Example:**
+
+```json
+{
+  "action": "trace_mouse",
+  "path": [
+    { "x": 100, "y": 100 },
+    { "x": 150, "y": 150 },
+    { "x": 200, "y": 200 }
+  ],
+  "holdKeys": ["shift"]
+}
+```
+
 ### click_mouse
 
 Perform a mouse click at the current or specified position.
@@ -61,8 +88,8 @@ Perform a mouse click at the current or specified position.
 | Parameter       | Type   | Required | Description                                           |
 | --------------- | ------ | -------- | ----------------------------------------------------- |
 | `coordinates`   | Object | No       | The coordinates to click (uses current if omitted)    |
-| `coordinates.x` | Number | Yes\*    | X coordinate                                          |
-| `coordinates.y` | Number | Yes\*    | Y coordinate                                          |
+| `coordinates.x` | Number | Yes*     | X coordinate                                          |
+| `coordinates.y` | Number | Yes*     | Y coordinate                                          |
 | `button`        | String | Yes      | Mouse button: 'left', 'right', or 'middle'            |
 | `numClicks`     | Number | No       | Number of clicks (default: 1)                         |
 | `holdKeys`      | Array  | No       | Keys to hold while clicking (e.g., ['ctrl', 'shift']) |
@@ -81,17 +108,47 @@ Perform a mouse click at the current or specified position.
 }
 ```
 
+### press_mouse
+
+Press or release a mouse button at the current or specified position.
+
+**Parameters:**
+
+| Parameter       | Type   | Required | Description                                              |
+| --------------- | ------ | -------- | -------------------------------------------------------- |
+| `coordinates`   | Object | No       | The coordinates to press/release (uses current if omitted) |
+| `coordinates.x` | Number | Yes*     | X coordinate                                             |
+| `coordinates.y` | Number | Yes*     | Y coordinate                                             |
+| `button`        | String | Yes      | Mouse button: 'left', 'right', or 'middle'               |
+| `press`         | String | Yes      | Action: 'up' or 'down'                                   |
+
+**Example:**
+
+```json
+{
+  "action": "press_mouse",
+  "coordinates": {
+    "x": 150,
+    "y": 250
+  },
+  "button": "left",
+  "press": "down"
+}
+```
+
 ### drag_mouse
 
 Click and drag the mouse from one point to another.
 
 **Parameters:**
 
-| Parameter  | Type   | Required | Description                                   |
-| ---------- | ------ | -------- | --------------------------------------------- |
-| `path`     | Array  | Yes      | Array of coordinate objects for the drag path |
-| `button`   | String | Yes      | Mouse button: 'left', 'right', or 'middle'    |
-| `holdKeys` | Array  | No       | Keys to hold while dragging                   |
+| Parameter    | Type   | Required | Description                                   |
+| ------------ | ------ | -------- | --------------------------------------------- |
+| `path`       | Array  | Yes      | Array of coordinate objects for the drag path |
+| `path[].x`   | Number | Yes      | X coordinate for each point in the path       |
+| `path[].y`   | Number | Yes      | Y coordinate for each point in the path       |
+| `button`     | String | Yes      | Mouse button: 'left', 'right', or 'middle'    |
+| `holdKeys`   | Array  | No       | Keys to hold while dragging                   |
 
 **Example:**
 
@@ -112,12 +169,14 @@ Scroll up, down, left, or right.
 
 **Parameters:**
 
-| Parameter     | Type   | Required | Description                                            |
-| ------------- | ------ | -------- | ------------------------------------------------------ |
-| `coordinates` | Object | No       | The coordinates to scroll at (uses current if omitted) |
-| `direction`   | String | Yes      | Scroll direction: 'up', 'down', 'left', 'right'        |
-| `amount`      | Number | Yes      | Scroll amount (pixels)                                 |
-| `holdKeys`    | Array  | No       | Keys to hold while scrolling                           |
+| Parameter       | Type   | Required | Description                                            |
+| --------------- | ------ | -------- | ------------------------------------------------------ |
+| `coordinates`   | Object | No       | The coordinates to scroll at (uses current if omitted) |
+| `coordinates.x` | Number | Yes*     | X coordinate                                           |
+| `coordinates.y` | Number | Yes*     | Y coordinate                                           |
+| `direction`     | String | Yes      | Scroll direction: 'up', 'down', 'left', 'right'        |
+| `amount`        | Number | Yes      | Scroll amount (pixels)                                 |
+| `holdKeys`      | Array  | No       | Keys to hold while scrolling                           |
 
 **Example:**
 
@@ -129,24 +188,45 @@ Scroll up, down, left, or right.
 }
 ```
 
-### press_key
+### type_keys
 
-Press a keyboard key with optional modifiers.
+Type a sequence of keyboard keys.
 
 **Parameters:**
 
-| Parameter   | Type   | Required | Description                                    |
-| ----------- | ------ | -------- | ---------------------------------------------- |
-| `key`       | String | Yes      | The key to press (e.g., 'a', 'enter', 'tab')   |
-| `modifiers` | Array  | No       | Modifier keys to hold (e.g., ['alt', 'shift']) |
+| Parameter | Type   | Required | Description                            |
+| --------- | ------ | -------- | -------------------------------------- |
+| `keys`    | Array  | Yes      | Array of keys to type in sequence      |
+| `delay`   | Number | No       | Delay between key presses (ms)         |
 
 **Example:**
 
 ```json
 {
-  "action": "press_key",
-  "key": "tab",
-  "modifiers": ["alt"]
+  "action": "type_keys",
+  "keys": ["a", "b", "c", "enter"],
+  "delay": 50
+}
+```
+
+### press_keys
+
+Press or release keyboard keys.
+
+**Parameters:**
+
+| Parameter | Type   | Required | Description                                |
+| --------- | ------ | -------- | ------------------------------------------ |
+| `keys`    | Array  | Yes      | Array of keys to press or release          |
+| `press`   | String | Yes      | Action: 'up' or 'down'                     |
+
+**Example:**
+
+```json
+{
+  "action": "press_keys",
+  "keys": ["ctrl", "shift", "esc"],
+  "press": "down"
 }
 ```
 
@@ -159,7 +239,7 @@ Type a text string with optional delay.
 | Parameter | Type   | Required | Description                                           |
 | --------- | ------ | -------- | ----------------------------------------------------- |
 | `text`    | String | Yes      | The text to type                                      |
-| `delay`   | Number | No       | Delay between keystrokes in milliseconds (default: 0) |
+| `delay`   | Number | No       | Delay between characters in milliseconds (default: 0) |
 
 **Example:**
 
@@ -206,7 +286,7 @@ Capture a screenshot of the desktop.
 
 ### cursor_position
 
-Get the current cursor position.
+Get the current position of the mouse cursor.
 
 **Parameters:** None required
 
@@ -220,55 +300,119 @@ Get the current cursor position.
 
 ## Response Format
 
-All actions return a standard response structure:
+The response format varies depending on the action performed.
+
+### Standard Response
+
+Most actions return a simple success response:
+
+```json
+{
+  "success": true
+}
+```
+
+### Screenshot Response
 
 ```json
 {
   "success": true,
   "data": {
-    // Action-specific response data
-  },
-  "error": null
+    "image": "base64_encoded_image_data"
+  }
 }
 ```
 
-### Response Examples
-
-**For screenshot action:**
+### Cursor Position Response
 
 ```json
 {
   "success": true,
   "data": {
-    "image": "base64-encoded-image-data",
-    "width": 1280,
-    "height": 720
-  },
-  "error": null
+    "x": 123,
+    "y": 456
+  }
 }
 ```
 
-**For cursor_position action:**
-
-```json
-{
-  "success": true,
-  "data": {
-    "x": 452,
-    "y": 213
-  },
-  "error": null
-}
-```
-
-## Error Handling
-
-If an action fails, the response will include an error message:
+### Error Response
 
 ```json
 {
   "success": false,
-  "data": null,
-  "error": "Invalid coordinates provided"
+  "error": "Error message"
 }
 ```
+
+## Code Examples
+
+### JavaScript/Node.js Example
+
+```javascript
+const axios = require('axios');
+
+const bytebot = {
+  baseUrl: 'http://localhost:9990/computer-use/computer',
+  
+  async action(params) {
+    try {
+      const response = await axios.post(this.baseUrl, params);
+      return response.data;
+    } catch (error) {
+      console.error('Error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+  
+  // Convenience methods
+  async moveMouse(x, y) {
+    return this.action({
+      action: 'move_mouse',
+      coordinates: { x, y }
+    });
+  },
+  
+  async clickMouse(x, y, button = 'left') {
+    return this.action({
+      action: 'click_mouse',
+      coordinates: { x, y },
+      button
+    });
+  },
+  
+  async typeText(text) {
+    return this.action({
+      action: 'type_text',
+      text
+    });
+  },
+  
+  async screenshot() {
+    return this.action({ action: 'screenshot' });
+  }
+};
+
+// Example usage:
+async function example() {
+  // Navigate to a website
+  await bytebot.moveMouse(100, 35);
+  await bytebot.clickMouse(100, 35);
+  await bytebot.typeText('https://example.com');
+  await bytebot.action({
+    action: 'press_keys',
+    keys: ['enter'],
+    press: 'down'
+  });
+  
+  // Wait for page to load
+  await bytebot.action({
+    action: 'wait',
+    duration: 2000
+  });
+  
+  // Take a screenshot
+  const result = await bytebot.screenshot();
+  console.log('Screenshot taken!');
+}
+
+example().catch(console.error);

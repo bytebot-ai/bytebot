@@ -41,7 +41,7 @@ curl -X POST http://localhost:9990/computer-use \
 # Press Ctrl+S to save
 curl -X POST http://localhost:9990/computer-use \
   -H "Content-Type: application/json" \
-  -d '{"action": "press_key", "key": "s", "modifiers": ["control"]}'
+  -d '{"action": "press_keys", "key": "s", "modifiers": ["control"]}'
 ```
 
 </CodeGroup>
@@ -75,7 +75,7 @@ control_computer("wait", duration=2000)
 # Type a URL
 
 control_computer("type_text", text="https://example.com")
-control_computer("press_key", key="enter")
+control_computer("press_keys", key="enter")
 
 ````
 
@@ -136,11 +136,11 @@ def fill_web_form(form_fields):
 
         # If not the last field, press Tab to move to next field
         if i < len(form_fields) - 1:
-            control_computer("press_key", key="tab")
+            control_computer("press_keys", key="tab")
             time.sleep(0.5)
 
     # Submit the form by pressing Enter
-    control_computer("press_key", key="enter")
+    control_computer("press_keys", key="enter")
 
 # Example form fields with coordinates and values
 form_fields = [
@@ -278,7 +278,7 @@ def automate_browser():
 
     # Type URL
     control_computer("type_text", text="https://example.com")
-    control_computer("press_key", key="enter")
+    control_computer("press_keys", key="enter")
     time.sleep(2)  # Wait for page to load
 
     # Take screenshot of the loaded page
@@ -318,13 +318,13 @@ async function fillForm() {
   await controlComputer("type_text", { text: "John Doe" });
 
   // Tab to next field
-  await controlComputer("press_key", { key: "tab" });
+  await controlComputer("press_keys", { key: "tab" });
 
   // Type email
   await controlComputer("type_text", { text: "john@example.com" });
 
   // Tab to next field
-  await controlComputer("press_key", { key: "tab" });
+  await controlComputer("press_keys", { key: "tab" });
 
   // Type message
   await controlComputer("type_text", {
@@ -333,10 +333,10 @@ async function fillForm() {
   });
 
   // Tab to submit button
-  await controlComputer("press_key", { key: "tab" });
+  await controlComputer("press_keys", { key: "tab" });
 
   // Press Enter to submit
-  await controlComputer("press_key", { key: "enter" });
+  await controlComputer("press_keys", { key: "enter" });
 }
 
 fillForm().catch(console.error);
@@ -372,7 +372,7 @@ class BytebotWebDriver:
 
     def navigate_to(self, url):
         self.control_computer("type_text", text=url)
-        self.control_computer("press_key", key="enter")
+        self.control_computer("press_keys", key="enter")
         time.sleep(2)  # Wait for page to load
 
     def click_element(self, coords):
@@ -382,11 +382,11 @@ class BytebotWebDriver:
     def type_text(self, text):
         self.control_computer("type_text", text=text)
 
-    def press_key(self, key, modifiers=None):
+    def press_keys(self, key, modifiers=None):
         params = {"key": key}
         if modifiers:
             params["modifiers"] = modifiers
-        self.control_computer("press_key", **params)
+        self.control_computer("press_keys", **params)
 
     def take_screenshot(self):
         return self.control_computer("screenshot")
