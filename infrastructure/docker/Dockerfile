@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 
 # Base image
-FROM --platform=linux/amd64 ubuntu:22.04
+FROM ubuntu:22.04
 
 # -----------------------------------------------------------------------------
 # 1. Environment setup
@@ -101,13 +101,33 @@ RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC \
 # 5. Application setup (bytebotd)
 # -----------------------------------------------------------------------------
 # Copy package files first to leverage Docker cache
-COPY ./packages/bytebotd/package*.json /bytebotd/
-WORKDIR /bytebotd
-RUN npm install
 
-# Copy the rest of the application code and build
+# Install dependencies required to build libnut-core
+RUN apt-get update && \
+    apt-get install -y cmake libx11-dev libxtst-dev libxinerama-dev libxi-dev libxrandr-dev git build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+
 COPY ./packages/bytebotd/ /bytebotd/
-RUN npm run build
+WORKDIR /bytebotd
+RUN npm install --build-from-source
+
+RUN npm run build 
+
+WORKDIR /compile
+
+RUN git clone https://github.com/ZachJW34/libnut-core.git && \
+    cd libnut-core && \
+    npm install && \
+    npm run build:release
+
+# replace /bytebotd/node_modules/@nut-tree-fork/libnut-linux/build/Release/libnut.node with /compile/libnut-core/build/Release/libnut.node
+RUN rm -f /bytebotd/node_modules/@nut-tree-fork/libnut-linux/build/Release/libnut.node && \
+    cp /compile/libnut-core/build/Release/libnut.node /bytebotd/node_modules/@nut-tree-fork/libnut-linux/build/Release/libnut.node
+
+RUN rm -rf /compile
+
+WORKDIR /bytebotd
 
 # -----------------------------------------------------------------------------
 # 6. System configuration
