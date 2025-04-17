@@ -4,7 +4,7 @@
 
 **The computer use container**
 
-[Website](https://bytebot.ai) | [Documentation](https://docs.bytebot.ai) | [Discord](https://discord.gg/6nxuF6cs) | [Twitter](https://x.com/bytebot_ai)
+[Website](https://bytebot.ai) | [Documentation](https://docs.bytebot.ai) | [Discord](https://discord.gg/tYhrV7zj) | [Twitter](https://x.com/bytebot_ai)
 
 </div>
 
