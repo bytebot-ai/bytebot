@@ -1,8 +1,13 @@
 services:
   bytebot-desktop:
-    build:
-      context: ../../
-      dockerfile: infrastructure/docker/Dockerfile
+    # Uncomment below to build from source
+    # build:
+    #   context: ../../
+    #   dockerfile: infrastructure/docker/Dockerfile
+
+    # Use pre-built image
+    image: ghcr.io/bytebot-ai/bytebot:edge
+
     container_name: bytebot-desktop
     restart: unless-stopped
     ports:
