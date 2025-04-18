@@ -18,8 +18,25 @@ Getting started with Bytebot is simple and straightforward. You can run it as a 
 <AccordionGroup>
   <Accordion icon="cube" title="Running the Standalone Desktop Container">
     <AccordionGroup>
-      <Accordion icon="cube" title="Building the Docker Image">
-        You can build the Bytebot Docker image using the provided build script:
+      <Accordion icon="play" title="Using the Pre-built Image">
+        The easiest way to get started is to use the pre-built Bytebot image:
+
+        ```bash
+        docker run --privileged -d \
+          -p 9990:9990 -p 5900:5900 -p 6080:6080 -p 6081:6081 \
+          --name "bytebot" \
+          ghcr.io/bytebot-ai/bytebot:edge
+        ```
+
+        This will start Bytebot with default settings. The container exposes several ports:
+        - `9990`: REST API and noVNC web access
+        - `5900`: VNC server
+        - `6080`: noVNC direct
+        - `6081`: noVNC HTTP proxy
+      </Accordion>
+
+      <Accordion icon="cube" title="Building the Docker Image (Alternative)">
+        Alternatively, you can build the Bytebot Docker image locally using the provided build script:
 
         ```bash
         ./scripts/build.sh
@@ -30,18 +47,12 @@ Getting started with Bytebot is simple and straightforward. You can run it as a 
         ```bash
         ./scripts/build.sh --tag custom-tag --no-cache
         ```
-      </Accordion>
-
-      <Accordion icon="play" title="Running the Container">
-        Once the image is built, you can run Bytebot using the provided run script:
-
+        
+        Then run the container with:
+        
         ```bash
         ./scripts/run.sh
         ```
-
-        This will start Bytebot with default settings. The container exposes several ports:
-        - `9990`: REST API and noVNC web access
-        - `5900`: VNC server
       </Accordion>
 
       <Accordion icon="display" title="Accessing the Desktop">
@@ -73,10 +84,10 @@ Getting started with Bytebot is simple and straightforward. You can run it as a 
         Run the full Bytebot system using Docker Compose:
 
         ```bash
-        docker-compose -f infrastructure/docker/docker-compose.yml --env-file infrastructure/docker/.env up -d --build
+        docker-compose -f infrastructure/docker/docker-compose.yml --env-file infrastructure/docker/.env up -d
         ```
 
-        This will start the following services:
+        This will start the following services using the pre-built image:
         - Bytebot desktop container
         - PostgreSQL database
         - Redis database

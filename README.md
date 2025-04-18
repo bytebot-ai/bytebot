@@ -30,7 +30,17 @@ For full documentation, visit [**docs.bytebot.ai**](https://docs.bytebot.ai)
 #### Core Container Only
 
 ```bash
-# Build the image
+# Run using the pre-built image
+docker run --privileged -d \
+  -p 9990:9990 -p 5900:5900 -p 6080:6080 -p 6081:6081 \
+  --name "bytebot" \
+  ghcr.io/bytebot-ai/bytebot:edge
+```
+
+Alternatively, you can build and run the image locally:
+
+```bash
+# Build the image locally
 ./scripts/build.sh
 
 # Run the container
@@ -44,7 +54,7 @@ For full documentation, visit [**docs.bytebot.ai**](https://docs.bytebot.ai)
 echo "ANTHROPIC_API_KEY=your_api_key_here" > infrastructure/docker/.env
 
 # Start all services (Bytebot, agent, UI, databases)
-docker-compose -f infrastructure/docker/docker-compose.yml --env-file infrastructure/docker/.env up -d --build
+docker-compose -f infrastructure/docker/docker-compose.yml --env-file infrastructure/docker/.env up -d
 ```
 
 To shut down all services:
