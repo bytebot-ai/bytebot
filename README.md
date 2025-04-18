@@ -1,124 +1,112 @@
-<div align="center">
+# 🖥️ Bytebot – **The Easiest Way to Build Desktop Agents**
 
-  <img src="static/bytebot-logo.png" width="300" alt="Bytebot Logo">
+<img src="static/bytebot-logo.png" width="300" alt="Bytebot Logo">
 
-**The computer use container**
+[🌐 Website](https://bytebot.ai) • [📚 Docs](https://docs.bytebot.ai) • [💬 Discord](https://discord.gg/tYhrV7zj) • [𝕏 Twitter](https://x.com/bytebot_ai)
 
-[Website](https://bytebot.ai) | [Documentation](https://docs.bytebot.ai) | [Discord](https://discord.gg/tYhrV7zj) | [Twitter](https://x.com/bytebot_ai)
+## ✨ Why Bytebot?
 
-</div>
+Bytebot spins up a containerized Linux desktop you can **drive programmatically** or via VNC—perfect for automation, scraping, CI tasks, and remote work.
 
-## Features
+## 🚀 Features
 
-- **Containerized Desktop** - Lightweight XFCE4 desktop on Ubuntu 22.04
-- **Access Anywhere** - VNC and browser-based noVNC remote access
-- **Unified API** - Control all desktop actions through a simple REST API
-- **Pre-installed Tools** - Firefox and other essential applications ready to use
+- 📦 **Containerized Desktop** – XFCE4 on Ubuntu 22.04 in a single Docker image
+- 🌍 **Access Anywhere** – VNC & browser‑based **noVNC** built‑in
+- 🛠️ **Unified API** – Script every click & keystroke with a clean REST interface
+- ⚙️ **Ready‑to‑Go Tools** – Firefox & essentials pre‑installed
 
-## Documentation
+## 📖 Documentation
 
-For full documentation, visit [**docs.bytebot.ai**](https://docs.bytebot.ai)
+Dive deeper at [**docs.bytebot.ai**](https://docs.bytebot.ai).
 
-## Quick Start
+## ⚡ Quick Start
 
-### Prerequisites
+### 🛠️ Prerequisites
 
-- Docker installed on your system
+- Docker ≥ 20.10
 
-### Run Bytebot
+### 🐳 Run Bytebot
 
-#### Core Container Only
+#### Core Container (fastest way)
 
 ```bash
-# Run using the pre-built image
 docker run --privileged -d \
   -p 9990:9990 -p 5900:5900 -p 6080:6080 -p 6081:6081 \
-  --name "bytebot" \
+  --name bytebot \
   ghcr.io/bytebot-ai/bytebot:edge
 ```
 
-Alternatively, you can build and run the image locally:
+Build locally instead:
 
 ```bash
-# Build the image locally
-./scripts/build.sh
-
-# Run the container
-./scripts/run.sh
+./scripts/build.sh   # 🔨 build
+./scripts/run.sh     # 🚀 run
 ```
 
-#### Full Agent Setup (Alpha)
+#### 🤖 Full Agent Stack (alpha)
 
 ```bash
-# Create .env file with your Anthropic API key
 echo "ANTHROPIC_API_KEY=your_api_key_here" > infrastructure/docker/.env
 
-# Start all services (Bytebot, agent, UI, databases)
-docker-compose -f infrastructure/docker/docker-compose.yml --env-file infrastructure/docker/.env up -d
+docker-compose -f infrastructure/docker/docker-compose.yml \
+  --env-file infrastructure/docker/.env up -d     # 🔥 start everything
 ```
 
-To shut down all services:
+Stop:
 
 ```bash
-docker-compose -f infrastructure/docker/docker-compose.yml --env-file infrastructure/docker/.env down
+docker-compose -f infrastructure/docker/docker-compose.yml \
+  --env-file infrastructure/docker/.env down
 ```
 
-More information can be found in the [Quickstart Guide](https://docs.bytebot.ai/quickstart).
+More details in the [**Quickstart Guide**](https://docs.bytebot.ai/quickstart).
 
-### Access Bytebot
+### 🔑 Connect
 
-- **VNC Client**: Connect to `localhost:5900`
-- **Web Browser (noVNC)**: Navigate to `http://localhost:9990/vnc`
-- **Bytebot Agent API**: Available at `http://localhost:9991`
-- **Bytebot Chat UI**: Available at `http://localhost:9992`
+| Interface     | URL / Port                  | Notes                    |
+| ------------- | --------------------------- | ------------------------ |
+| 🖥️ VNC Client | `localhost:5900`            | password‑less by default |
+| 🌐 noVNC      | `http://localhost:9990/vnc` | open in any browser      |
+| 🤖 Agent API  | `http://localhost:9991`     | REST API                 |
+| 💬 Chat UI    | `http://localhost:9992`     | Agent UI                 |
 
-## Automation API
+## 🤖 Automation API
 
-Control Bytebot using the unified computer action API:
+Control Bytebot with a single endpoint. Read the [**REST reference**](https://docs.bytebot.ai/rest-api/computer-use). Supported actions:
 
-- [REST API Reference](https://docs.bytebot.ai/rest-api/computer-use)
+| 🎮 Action         | Description                |
+| ----------------- | -------------------------- |
+| `move_mouse`      | Move cursor to coordinates |
+| `trace_mouse`     | Draw a path                |
+| `click_mouse`     | Click (left/right/middle)  |
+| `press_mouse`     | Press / release button     |
+| `drag_mouse`      | Drag along path            |
+| `scroll`          | Scroll direction & amount  |
+| `type_keys`       | Type sequence of keys      |
+| `press_keys`      | Press / release keys       |
+| `type_text`       | Type a string              |
+| `wait`            | Wait milliseconds          |
+| `screenshot`      | Capture screen             |
+| `cursor_position` | Return cursor position     |
 
-### Available Actions
+_(See docs for parameter details.)_
 
-The unified API supports the following actions:
+## 🙌 Contributing
 
-| Action            | Description                                        | Parameters                                                                                                                          |
-| ----------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `move_mouse`      | Move the mouse cursor to a specific position       | `coordinates: { x: number, y: number }`                                                                                             |
-| `trace_mouse`     | Move the mouse along a path of coordinates         | `path: { x: number, y: number }[]`, `holdKeys?: string[]`                                                                           |
-| `click_mouse`     | Perform a mouse click                              | `coordinates?: { x: number, y: number }`, `button: 'left' \| 'right' \| 'middle'`, `numClicks?: number`, `holdKeys?: string[]`      |
-| `press_mouse`     | Press or release a mouse button                    | `coordinates?: { x: number, y: number }`, `button: 'left' \| 'right' \| 'middle'`, `press: 'up' \| 'down'`                          |
-| `drag_mouse`      | Click and drag the mouse from one point to another | `path: { x: number, y: number }[]`, `button: 'left' \| 'right' \| 'middle'`, `holdKeys?: string[]`                                  |
-| `scroll`          | Scroll up, down, left, or right                    | `coordinates?: { x: number, y: number }`, `direction: 'up' \| 'down' \| 'left' \| 'right'`, `amount: number`, `holdKeys?: string[]` |
-| `type_keys`       | Type a sequence of keyboard keys                   | `keys: string[]`, `delay?: number`                                                                                                  |
-| `press_keys`      | Press or release keyboard keys                     | `keys: string[]`, `press: 'up' \| 'down'`                                                                                           |
-| `type_text`       | Type a text string                                 | `text: string`, `delay?: number`                                                                                                    |
-| `wait`            | Wait for a specified duration                      | `duration: number` (milliseconds)                                                                                                   |
-| `screenshot`      | Capture a screenshot of the desktop                | None                                                                                                                                |
-| `cursor_position` | Get the current cursor position                    | None                                                                                                                                |
+1. 🍴 Fork & branch from `main`
+2. 💡 Commit small, focused changes
+3. 📩 Open a PR with details
+4. 🔍 Address review feedback
+5. 🎉 Merge & celebrate!
 
-## Contributing
+## 💬 Support
 
-We welcome contributions from the community!
+Questions or ideas? Join us on [**Discord**](https://discord.gg/6nxuF6cs).
 
-### Guidelines
+## 🙏 Acknowledgments
 
-1. Fork the repo and create a new branch from the main branch.
-2. Commit your changes to the branch (please keep commits small and focused).
-3. Open a pull request with a clear description of the changes.
-4. Wait for review and address any feedback.
-5. Once approved, your changes will be merged.
+Powered by [**nutjs**](https://github.com/nut-tree/nut.js) and inspired by Anthropic's [**computer‑use demo**](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo).
 
-## Support
+## 📄 License
 
-For any questions or feedback, please join our community on [Discord](https://discord.gg/6nxuF6cs).
-
-## Acknowledgments
-
-Bytebot builds on top of [nutjs](https://github.com/nut-tree/nut.js), and is inspired by Anthropic's original [computer use demo](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo).
-
-## License
-
-Licensed under the MIT License.
-
-Copyright 2025 Tantl Labs, Inc.
+MIT © 2025 Tantl Labs, Inc.
