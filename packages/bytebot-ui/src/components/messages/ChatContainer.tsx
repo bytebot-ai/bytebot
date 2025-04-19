@@ -22,18 +22,21 @@ export function ChatContainer({
   }, [messages]);
 
   return (
-    <div ref={chatContainerRef} className="flex-1 overflow-auto p-4">
+    <div 
+      ref={chatContainerRef} 
+      className="flex-1 overflow-auto p-3 space-y-4"
+    >
       {isLoadingSession ? (
         <div className="flex justify-center items-center h-full">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-primary"></div>
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-bronze-light-4 border-t-blue-light-6"></div>
         </div>
       ) : messages.length > 0 ? (
         messages.map((message) => (
           <MessageItem key={message.id} message={message} />
         ))
       ) : (
-        <div className="flex justify-center items-center h-full">
-          <p className="text-muted">No messages yet...</p>
+        <div className="flex flex-col justify-center items-center h-full space-y-3">
+          <p className="text-sm text-bronze-light-7">Ask me to do something...</p>
         </div>
       )}
     </div>

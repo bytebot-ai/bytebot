@@ -1,13 +1,14 @@
-"use client";
+'use client';
 
 import type React from "react";
-import { useState, useRef, useEffect } from "react";
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { ChatHeader } from "./chat-header";
 
-type ContainerSize = "full" | "compact" | "minimized";
+export type ContainerSize = "full" | "compact" | "minimized";
+export type ContainerPosition = "left" | "right" | "free";
 
-interface DraggableContainerProps {
+export interface DraggableContainerProps {
   title: string;
   children: React.ReactNode;
   defaultPosition?: { x: number; y: number };
@@ -15,6 +16,7 @@ interface DraggableContainerProps {
   onClose?: () => void;
   parentSize: { width: number; height: number };
   minWidth?: number;
+  defaultSnap?: ContainerPosition;
 }
 
 export function DraggableContainer({
@@ -25,11 +27,13 @@ export function DraggableContainer({
   onClose,
   parentSize,
   minWidth = 300, // Default minimum width of 300px
+  defaultSnap = "right", // Default to right side
 }: DraggableContainerProps) {
   // Use a safe initial position that doesn't depend on window
   const [position, setPosition] = useState(defaultPosition || { x: 0, y: 0 });
   const [sizeMode, setSizeMode] = useState<ContainerSize>("full");
   const [isDragging, setIsDragging] = useState(false);
+  const [currentPosition, setCurrentPosition] = useState<ContainerPosition>(defaultSnap);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const [isMounted, setIsMounted] = useState(false);
@@ -40,45 +44,18 @@ export function DraggableContainer({
   }, []);
 
   // Calculate container width with minimum constraint
-  const getWidth = () => {
+  const getWidth = useCallback(() => {
     const calculatedWidth = parentSize.width * (1 / 4); // Changed from 1/5 to 1/4
     return Math.max(calculatedWidth, minWidth); // Ensure width is never less than minWidth
-  };
+  }, [parentSize.width, minWidth]);
 
-  // Calculate and set initial position after component mounts
-  useEffect(() => {
-    if (isMounted && !defaultPosition) {
-      const containerWidth = getWidth();
-      const rightPosition = window.innerWidth - containerWidth - 20;
-      const centerY = (window.innerHeight - parentSize.height * (7 / 8)) / 2;
-
-      setPosition({
-        x: rightPosition,
-        y: centerY,
-      });
+  const getHeight = useCallback(() => {
+    // When snapped to left or right, fill the height
+    if (currentPosition === "left" || currentPosition === "right") {
+      return parentSize.height;
     }
-  }, [isMounted, defaultPosition, parentSize, minWidth]);
-
-  // Update position if window size changes
-  useEffect(() => {
-    if (!isMounted) return;
-
-    const updatePosition = () => {
-      // Only update if not manually positioned by user
-      if (!isDragging && !defaultPosition) {
-        const containerWidth = getWidth();
-        setPosition({
-          x: window.innerWidth - containerWidth - 20,
-          y: (window.innerHeight - parentSize.height * (7 / 8)) / 2,
-        });
-      }
-    };
-
-    window.addEventListener("resize", updatePosition);
-    return () => window.removeEventListener("resize", updatePosition);
-  }, [parentSize, isDragging, isMounted, defaultPosition, minWidth]);
-
-  const getHeight = () => {
+    
+    // In free mode, use the size mode
     switch (sizeMode) {
       case "full":
         return parentSize.height * (7 / 8);
@@ -87,17 +64,60 @@ export function DraggableContainer({
       case "minimized":
         return "auto";
     }
-  };
+  }, [sizeMode, parentSize.height, currentPosition]);
+
+  // Update position based on snap position
+  const updatePositionBasedOnSnap = useCallback((snap: ContainerPosition) => {
+    const containerWidth = getWidth();
+    let newX = 0;
+    const centerY = (window.innerHeight - parentSize.height) / 2; // Position at the top of the parent
+
+    if (snap === "right") {
+      // Position on the right side of the parent container
+      newX = (window.innerWidth + parentSize.width) / 2;
+    } else if (snap === "left") {
+      // Position on the left side of the parent container
+      newX = (window.innerWidth - parentSize.width) / 2 - containerWidth;
+    } else {
+      // Free position - default to right side
+      newX = window.innerWidth - containerWidth - 20;
+    }
+
+    setPosition({
+      x: newX,
+      y: centerY,
+    });
+  }, [getWidth, parentSize.width, parentSize.height]);
+
+  // Handle position change from the header controls
+  const handlePositionChange = useCallback((newPosition: ContainerPosition) => {
+    setCurrentPosition(newPosition);
+    updatePositionBasedOnSnap(newPosition);
+  }, [updatePositionBasedOnSnap]);
+
+  // Calculate and set initial position after component mounts
+  useEffect(() => {
+    if (isMounted) {
+      updatePositionBasedOnSnap(defaultSnap);
+    }
+  }, [isMounted, defaultSnap, updatePositionBasedOnSnap]);
+
+  // Update position if window size changes
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const updatePosition = () => {
+      // Only update if not manually positioned by user
+      if (!isDragging) {
+        updatePositionBasedOnSnap(currentPosition);
+      }
+    };
+
+    window.addEventListener("resize", updatePosition);
+    return () => window.removeEventListener("resize", updatePosition);
+  }, [parentSize, isDragging, isMounted, currentPosition, updatePositionBasedOnSnap]);
 
   // Handle dragging
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    dragStartRef.current = {
-      x: e.clientX - position.x,
-      y: e.clientY - position.y,
-    };
-  };
-
   useEffect(() => {
     if (!isMounted) return;
 
@@ -113,11 +133,17 @@ export function DraggableContainer({
 
         const maxX = window.innerWidth - containerWidth;
         const maxY = window.innerHeight - containerHeight;
-
+        
+        // No automatic snapping, just constrain to viewport
         setPosition({
           x: Math.max(0, Math.min(newX, maxX)),
           y: Math.max(0, Math.min(newY, maxY)),
         });
+        
+        // When user starts dragging, set position mode to free
+        if (currentPosition !== "free") {
+          setCurrentPosition("free");
+        }
       }
     };
 
@@ -134,7 +160,7 @@ export function DraggableContainer({
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, position, isMounted]);
+  }, [isDragging, position, isMounted, getWidth, getHeight, currentPosition]);
 
   // Cycle through size modes
   const cycleSizeMode = () => {
@@ -147,16 +173,13 @@ export function DraggableContainer({
     }
   };
 
-  // Get the appropriate icon for the current size mode
-  const getSizeIcon = () => {
-    switch (sizeMode) {
-      case "full":
-        return <ChevronDown className="h-4 w-4" />;
-      case "compact":
-        return <ChevronDown className="h-4 w-4" />;
-      case "minimized":
-        return <ChevronUp className="h-4 w-4" />;
-    }
+  // Handle drag start
+  const handleDragStart = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX - position.x,
+      y: e.clientY - position.y,
+    };
   };
 
   // Don't render anything during SSR
@@ -168,7 +191,7 @@ export function DraggableContainer({
     <div
       ref={containerRef}
       className={cn(
-        "fixed shadow-lg rounded-lg border bg-background overflow-hidden",
+        "fixed shadow-md rounded-xl border border-border/30 bg-background/95 backdrop-blur-sm overflow-hidden",
         className
       )}
       style={{
@@ -179,46 +202,24 @@ export function DraggableContainer({
         zIndex: 50,
       }}
     >
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 py-2 bg-muted cursor-move select-none"
-        onMouseDown={handleMouseDown}
-      >
-        <h3 className="text-sm font-medium">{title}</h3>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={cycleSizeMode}
-            className="p-1 rounded-sm hover:bg-muted-foreground/20 transition-colors"
-            aria-label="Change size"
-          >
-            {getSizeIcon()}
-          </button>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="p-1 rounded-sm hover:bg-muted-foreground/20 transition-colors"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+      {/* Header with logo and position controls */}
+      <ChatHeader
+        title={title}
+        onClose={onClose}
+        onDragStart={handleDragStart}
+        onSizeChange={cycleSizeMode}
+        onPositionChange={handlePositionChange}
+        currentPosition={currentPosition}
+      />
+      
+      {/* Content area */}
+      <div className={cn("h-full overflow-auto", sizeMode === "minimized" && "hidden")}>
+        {children}
       </div>
-
-      {/* Content */}
-      {sizeMode !== "minimized" && (
-        <div
-          className="flex-1 overflow-auto p-4"
-          style={{ height: "calc(100% - 40px)" }}
-        >
-          {children}
-        </div>
-      )}
     </div>
   );
 }
 
-// Optional View component for organization (not required for basic functionality)
 interface ViewProps {
   title: string;
   icon?: React.ReactNode;

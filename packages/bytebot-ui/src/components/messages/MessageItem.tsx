@@ -8,7 +8,7 @@ import {
   isTextContentBlock,
   isToolResultContentBlock,
   isToolUseContentBlock,
-} from "../../../../shared/utils/messageContent.utils";
+} from "@/utils/messageContent.utils";
 
 interface MessageItemProps {
   message: Message;
@@ -36,16 +36,18 @@ function AssistantMessage({ message }: MessageItemProps) {
 
   return (
     <div className="mb-4">
-      <div className="flex items-start gap-2">
-        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-          <span className="text-primary-foreground text-xs">B</span>
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-light-6 flex items-center justify-center">
+          <span className="text-bronze-light-1 text-xs font-medium">B</span>
         </div>
-        <div className="text-sm">
-          <div>
+        <div className="text-sm flex-1">
+          <div className="bg-blue-light-1 rounded-lg rounded-tl-none p-3">
             {contentBlocks.map((block, index) => (
-              <div key={index} className="mb-2">
+              <div key={index} className="mb-2 last:mb-0">
                 {isTextContentBlock(block) && (
-                  <ReactMarkdown>{block.text}</ReactMarkdown>
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-p:leading-relaxed prose-pre:p-2">
+                    <ReactMarkdown>{block.text}</ReactMarkdown>
+                  </div>
                 )}
               </div>
             ))}
@@ -70,16 +72,18 @@ function UserMessage({ message }: MessageItemProps) {
 
   return (
     <div className="mb-4">
-      <div className="flex items-start gap-2">
-        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-muted flex items-center justify-center">
-          <User className="h-3 w-3" />
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-bronze-light-3 flex items-center justify-center">
+          <User className="h-4 w-4 text-bronze-light-8" />
         </div>
-        <div className="text-sm">
-          <div>
+        <div className="text-sm flex-1">
+          <div className="bg-bronze-light-3/50 rounded-lg rounded-tl-none p-3">
             {contentBlocks.map((block, index) => (
-              <div key={index} className="mb-2">
+              <div key={index} className="mb-2 last:mb-0">
                 {isTextContentBlock(block) && (
-                  <ReactMarkdown>{block.text}</ReactMarkdown>
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-p:leading-relaxed prose-pre:p-2">
+                    <ReactMarkdown>{block.text}</ReactMarkdown>
+                  </div>
                 )}
                 {isToolResultContentBlock(block) &&
                   block.content.map(

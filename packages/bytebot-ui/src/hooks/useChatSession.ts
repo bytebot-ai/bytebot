@@ -5,7 +5,7 @@ import {
   sendMessage,
   fetchLatestTask,
 } from "@/utils/messageUtils";
-import { MessageContentType } from "../../../shared/types/messageContent.types";
+import { MessageContentType } from "@/types/messageContent.types";
 
 export function useChatSession() {
   const [messages, setMessages] = useState<Message[]>([]);

@@ -9,7 +9,10 @@ export function VncViewer() {
           width: "100%",
           height: "100%",
           border: "none",
+          borderRadius: "0.5rem",
         }}
+        title="Virtual Desktop"
+        aria-label="Virtual Desktop Environment"
       />
     </div>
   );
