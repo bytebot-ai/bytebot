@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import { motion, AnimatePresence } from "motion/react";
 import { Header } from "@/components/layout/Header";
 import { ChatInput } from "@/components/messages/ChatInput";
 import { useRouter } from "next/navigation";
@@ -41,6 +42,38 @@ export default function Home() {
   const [activePopoverIndex, setActivePopoverIndex] = useState<number | null>(
     null,
   );
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const buttonsRef = useRef<HTMLDivElement>(null);
+
+  // Close popover when clicking outside or pressing ESC
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        popoverRef.current && 
+        !popoverRef.current.contains(event.target as Node) &&
+        buttonsRef.current &&
+        !buttonsRef.current.contains(event.target as Node)
+      ) {
+        setActivePopoverIndex(null);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActivePopoverIndex(null);
+      }
+    };
+
+    if (activePopoverIndex !== null) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activePopoverIndex]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -111,9 +144,9 @@ export default function Home() {
     >;
 
     return (
-      <div className="relative mt-6 flex w-full flex-wrap justify-start gap-1">
+      <div className="relative mt-6 flex w-full flex-wrap justify-start gap-1" ref={popoverRef}>
         {/* Container for buttons */}
-        <div className="flex w-full flex-wrap gap-1">
+        <div className="flex w-full flex-wrap gap-1" ref={buttonsRef}>
           {topicNames.map((topic, index) => (
             <div key={topic} className="relative">
               <button
@@ -129,26 +162,44 @@ export default function Home() {
         </div>
 
         {/* Popover container positioned relative to the parent */}
-        {activePopoverIndex !== null && (
-          <div className="bg-bytebot-bronze-light-2 shadow-bytebot border-bytebot-bronze-light-7 absolute top-full left-0 z-40 mt-1 w-[500px] overflow-hidden rounded-xl border p-2">
-            <div className="max-h-[300px] space-y-1 overflow-y-auto">
-              {topicUseCases[topicNames[activePopoverIndex]].map(
-                (useCase: string, idx: number) => (
-                  <div
-                    key={idx}
-                    className="text-bytebot-bronze-light-12 hover:bg-bytebot-bronze-light-3 cursor-pointer rounded-lg px-3 py-1.5 text-sm transition-colors"
-                    onClick={() => {
-                      console.log("Clicked use case:", useCase);
-                      handleSelectUseCase(useCase);
-                    }}
-                  >
-                    {useCase}
-                  </div>
-                ),
-              )}
-            </div>
-          </div>
-        )}
+        <AnimatePresence>
+          {activePopoverIndex !== null && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ 
+                duration: 0.3, 
+                ease: [0.4, 0.0, 0.2, 1] 
+              }}
+              className="bg-bytebot-bronze-light-3 shadow-bytebot border-bytebot-bronze-light-7 absolute top-full left-0 z-40 mt-1 w-[500px] overflow-hidden rounded-xl border p-1.5"
+            >
+              <div className="max-h-[300px] space-y-1 overflow-y-auto">
+                {topicUseCases[topicNames[activePopoverIndex]].map(
+                  (useCase: string, idx: number) => (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ 
+                        duration: 0.2, 
+                        delay: idx * 0.03,
+                        ease: [0.4, 0.0, 0.2, 1] 
+                      }}
+                      className="text-bytebot-bronze-light-12 hover:bg-bytebot-bronze-light-2 cursor-pointer rounded-md px-3 py-1.5 text-sm transition-colors"
+                      onClick={() => {
+                        console.log("Clicked use case:", useCase);
+                        handleSelectUseCase(useCase);
+                      }}
+                    >
+                      {useCase}
+                    </motion.div>
+                  ),
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   };
@@ -212,7 +263,7 @@ export default function Home() {
         {/* Mobile layout - only visible on small/medium screens */}
         <div className="flex h-full flex-col lg:hidden">
           <div className="flex flex-1 flex-col items-center overflow-y-auto px-4 pt-10">
-            <div className="flex w-full max-w-xl flex-col items-center">
+            <div className="flex w-full max-w-xl flex-col items-center pb-10">
               <div className="mb-6 flex w-full flex-col items-start justify-start">
                 <h1 className="text-bytebot-bronze-light-12 mb-1 text-2xl">
                   Got something brewing?

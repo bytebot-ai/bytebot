@@ -3,9 +3,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Header } from "@/components/layout/Header";
 import { VncViewer } from "@/components/vnc/VncViewer";
+import { ScreenshotViewer } from "@/components/screenshot/ScreenshotViewer";
 import { ChatContainer } from "@/components/messages/ChatContainer";
 import { ChatInput } from "@/components/messages/ChatInput";
 import { useChatSession } from "@/hooks/useChatSession";
+import { useScrollScreenshot } from "@/hooks/useScrollScreenshot";
 import { useParams, useRouter } from "next/navigation";
 import {
   Select,
@@ -22,6 +24,7 @@ export default function TaskPage() {
   const taskId = params.id as string;
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const {
     messages,
@@ -35,6 +38,17 @@ export default function TaskPage() {
   } = useChatSession({ initialTaskId: taskId });
 
   const [isMounted, setIsMounted] = useState(false);
+
+  // Determine if task is inactive (show screenshot) or active (show VNC)
+  const isTaskInactive = taskStatus === TaskStatus.COMPLETED || 
+                         taskStatus === TaskStatus.FAILED || 
+                         taskStatus === TaskStatus.CANCELLED;
+
+  // Use scroll screenshot hook for inactive tasks
+  const { currentScreenshot, allScreenshots } = useScrollScreenshot({
+    messages,
+    scrollContainerRef: chatContainerRef,
+  });
 
   // Set isMounted to true after component mounts
   useEffect(() => {
@@ -88,6 +102,7 @@ export default function TaskPage() {
     return () => window.removeEventListener("resize", updateSize);
   }, [isMounted]);
 
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <Header />
@@ -96,10 +111,40 @@ export default function TaskPage() {
         <div className="grid h-full grid-cols-7 gap-4">
           {/* Main container */}
           <div className="col-span-4">
-            <div className="border-bytebot-bronze-light-5 shadow-bytebot flex aspect-[4/3] w-full flex-col rounded-2xl border">
+            <div className="border-bytebot-bronze-light-5 shadow-bytebot flex aspect-[4/3] w-full flex-col rounded-lg border">
+              {/* Status Header */}
+              <div className="flex items-center justify-between rounded-t-lg px-4 py-2 border-b border-bytebot-bronze-light-5 bg-bytebot-bronze-light-1">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    taskStatus === TaskStatus.COMPLETED 
+                      ? 'bg-green-500' 
+                      : taskStatus === TaskStatus.FAILED 
+                        ? 'bg-red-500' 
+                        : taskStatus === TaskStatus.CANCELLED 
+                          ? 'bg-gray-500'
+                          : taskStatus === TaskStatus.RUNNING 
+                            ? 'bg-green-400 animate-pulse' 
+                            : 'bg-yellow-400'
+                  }`} />
+                  <span className="text-sm font-medium text-bytebot-bronze-dark-8">
+                    {isTaskInactive 
+                      ? `Task ${taskStatus.toLowerCase()} - Screenshot View` 
+                      : taskStatus === TaskStatus.RUNNING 
+                        ? 'Live Desktop View' 
+                        : `Task ${taskStatus.toLowerCase()} - Live View`
+                    }
+                  </span>
+                </div>
+{isTaskInactive && currentScreenshot && (
+                  <span className="text-xs text-bytebot-bronze-light-11 bg-bytebot-bronze-light-3 px-2 py-1 rounded">
+                    Screenshot {allScreenshots.findIndex(s => s.id === currentScreenshot.id) + 1} of {allScreenshots.length}
+                  </span>
+                )}
+              </div>
+              
               <div
                 ref={containerRef}
-                className="overflow-hidden rounded-[14px]"
+                className="flex-1 overflow-hidden rounded-b-[14px]"
               >
                 <div
                   style={{
@@ -108,20 +153,28 @@ export default function TaskPage() {
                     maxWidth: "100%",
                   }}
                 >
-                  <VncViewer />
+                  {isTaskInactive ? (
+                    <ScreenshotViewer 
+                      screenshot={currentScreenshot}
+                      className="w-full h-full shadow-bytebot"
+                    />
+                  ) : (
+                    <VncViewer />
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
           {/* Chat Area */}
-          <div className="col-span-3 flex h-full flex-col overflow-hidden">
+          <div className="col-span-3 flex h-full flex-col overflow-scroll">
             {/* Messages scrollable area */}
-            <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+            <div className="flex-1 px-4 pt-4 pb-2">
               <ChatContainer
                 taskStatus={taskStatus}
                 messages={messages}
                 isLoadingSession={isLoadingSession}
+                scrollRef={chatContainerRef}
               />
             </div>
             {/* Fixed chat input */}

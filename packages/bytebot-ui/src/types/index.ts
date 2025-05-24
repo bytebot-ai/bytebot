@@ -10,6 +10,7 @@ export interface Message {
   id: string;
   content: MessageContentBlock[];
   role: Role;
+  taskId?: string;
   createdAt?: string;
 }
 

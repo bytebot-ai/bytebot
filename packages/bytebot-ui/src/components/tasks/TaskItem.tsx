@@ -83,7 +83,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task }) => {
             </div>
           )}
           {task.status === TaskStatus.FAILED && (
-            <div className="bg-bytebot-red-light-3 border-bytebot-green-a5 inline-flex w-fit items-center space-x-1 rounded-full border px-1.5 py-0.5">
+            <div className="bg-bytebot-red-light-3 border-bytebot-red-light-7 inline-flex w-fit items-center space-x-1 rounded-full border px-1.5 py-0.5">
               <HugeiconsIcon
                 icon={Cancel01Icon}
                 className="text-bytebot-red-light-9 mr-1 h-4 w-4"

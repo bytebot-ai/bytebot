@@ -46,6 +46,7 @@ type IconType =
 
 interface MessageGroupProps {
   group: GroupedMessages;
+  messages?: any[]; // All messages for finding indices
 }
 
 function getIcon(block: ComputerToolUseContentBlock): IconType {
@@ -149,15 +150,15 @@ function getLabel(block: ComputerToolUseContentBlock) {
   return "Unknown";
 }
 
-export function MessageGroup({ group }: MessageGroupProps) {
+export function MessageGroup({ group, messages = [] }: MessageGroupProps) {
   if (group.role === Role.ASSISTANT) {
-    return <AssistantMessage group={group} />;
+    return <AssistantMessage group={group} messages={messages} />;
   }
 
-  return <UserMessage group={group} />;
+  return <UserMessage group={group} messages={messages} />;
 }
 
-export function AssistantMessage({ group }: MessageGroupProps) {
+export function AssistantMessage({ group, messages = [] }: MessageGroupProps) {
   // flatten the message content
   const contentBlocks: MessageContentBlock[] = group.messages
     .flatMap((message) => message.content)
@@ -180,138 +181,172 @@ export function AssistantMessage({ group }: MessageGroupProps) {
 
   return (
     <div className="mb-4">
-      <div className="flex items-start gap-2">
-        <div className="border-bytebot-bronze-light-7 flex h-[28px] w-[28px] flex-shrink-0 items-center justify-center rounded-sm border bg-white">
-          <Image
-            src="/bytebot_square_light.svg"
-            alt="Bytebot"
-            width={16}
-            height={16}
-            className="h-4 w-4"
-          />
-        </div>
-        <div className="w-full space-y-2">
-          {contentBlocks.map((block, index) => (
-            <div key={index}>
-              {isTextContentBlock(block) && (
-                <div className="text-bytebot-bronze-dark-8 text-sm">
-                  <ReactMarkdown>{block.text}</ReactMarkdown>
-                </div>
-              )}
-
-              {isImageContentBlock(block.content?.[0]) && (
-                <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-7 shadow-bytebot max-w-4/5 rounded-md border px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <HugeiconsIcon
-                      icon={Camera01Icon}
-                      className="text-bytebot-bronze-dark-9 h-4 w-4"
-                    />
-                    <p className="text-bytebot-bronze-light-11 text-xs">
-                      Screenshot taken
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {isComputerToolUseContentBlock(block) && (
-                <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-7 shadow-bytebot max-w-4/5 rounded-md border px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <HugeiconsIcon
-                      icon={getIcon(block)}
-                      className="text-bytebot-bronze-dark-9 h-4 w-4"
-                    />
-                    <p className="text-bytebot-bronze-light-11 text-xs">
-                      {getLabel(block)}
-                    </p>
-                    {/* Text for type and key actions */}
-                    {(isTypeKeysToolUseBlock(block) ||
-                      isPressKeysToolUseBlock(block)) && (
-                      <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
-                        {String(block.input.keys.join("+"))}
-                      </p>
-                    )}
-                    {isTypeTextToolUseBlock(block) && (
-                      <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
-                        {String(block.input.text)}
-                      </p>
-                    )}
-                    {/* Duration for wait and hold_key actions */}
-                    {isWaitToolUseBlock(block) && (
-                      <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
-                        {`${block.input.duration}ms`}
-                      </p>
-                    )}
-                    {/* Coordinates for click/mouse actions */}
-                    {block.input.coordinates && (
-                      <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
-                        {
-                          (block.input.coordinates as { x: number; y: number })
-                            .x
-                        }
-                        ,{" "}
-                        {
-                          (block.input.coordinates as { x: number; y: number })
-                            .y
-                        }
-                      </p>
-                    )}
-                    {/* Start and end coordinates for path actions */}
-                    {"path" in block.input &&
-                      Array.isArray(block.input.path) &&
-                      block.input.path.every(
-                        (point) =>
-                          point.x !== undefined && point.y !== undefined,
-                      ) && (
-                        <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
-                          From: {block.input.path[0].x}, {block.input.path[0].y}{" "}
-                          → To:{" "}
-                          {block.input.path[block.input.path.length - 1].x},{" "}
-                          {block.input.path[block.input.path.length - 1].y}
-                        </p>
-                      )}
-                    {/* Scroll information */}
-                    {isScrollToolUseBlock(block) && (
-                      <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
-                        {String(block.input.direction)}{" "}
-                        {Number(block.input.numScrolls)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
+      {group.messages.map((message) => {
+        const messageIndex = messages.findIndex(m => m.id === message.id);
+        
+        // Filter content blocks and check if any visible content remains
+        const visibleBlocks = message.content.filter((block) => {
+          // Filter logic from the original code
+          if (
+            isToolResultContentBlock(block) &&
+            isImageContentBlock(block.content?.[0])
+          ) {
+            return true;
+          }
+          if (isToolResultContentBlock(block) && !block.is_error) {
+            return false;
+          }
+          return true;
+        });
+        
+        // Skip rendering if no visible content
+        if (visibleBlocks.length === 0) {
+          return null;
+        }
+        
+        return (
+          <div key={message.id} data-message-index={messageIndex} className="flex items-start gap-2 mb-2">
+            <div className="border-bytebot-bronze-light-7 flex h-[28px] w-[28px] flex-shrink-0 items-center justify-center rounded-sm border bg-white">
+              <Image
+                src="/bytebot_square_light.svg"
+                alt="Bytebot"
+                width={16}
+                height={16}
+                className="h-4 w-4"
+              />
             </div>
-          ))}
-        </div>
-      </div>
+            <div className="w-full space-y-2">
+              {visibleBlocks.map((block, index) => (
+                <div key={index}>
+                  {isTextContentBlock(block) && (
+                    <div className="text-bytebot-bronze-dark-8 text-sm">
+                      <ReactMarkdown>{block.text}</ReactMarkdown>
+                    </div>
+                  )}
+
+                  {isImageContentBlock(block.content?.[0]) && (
+                    <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-7 shadow-bytebot max-w-4/5 rounded-md border overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-bytebot-bronze-light-7">
+                        <HugeiconsIcon
+                          icon={Camera01Icon}
+                          className="text-bytebot-bronze-dark-9 h-4 w-4"
+                        />
+                        <p className="text-bytebot-bronze-light-11 text-xs">
+                          Screenshot taken
+                        </p>
+                      </div>
+                      <div className="relative w-full h-48">
+                        <Image
+                          src={`data:image/png;base64,${block.content[0].source.data}`}
+                          alt="Screenshot"
+                          fill
+                          className="object-contain"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {isComputerToolUseContentBlock(block) && (
+                    <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-7 shadow-bytebot max-w-4/5 rounded-md border px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <HugeiconsIcon
+                          icon={getIcon(block)}
+                          className="text-bytebot-bronze-dark-9 h-4 w-4"
+                        />
+                        <p className="text-bytebot-bronze-light-11 text-xs">
+                          {getLabel(block)}
+                        </p>
+                        {/* Text for type and key actions */}
+                        {(isTypeKeysToolUseBlock(block) ||
+                          isPressKeysToolUseBlock(block)) && (
+                          <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
+                            {String(block.input.keys.join("+"))}
+                          </p>
+                        )}
+                        {isTypeTextToolUseBlock(block) && (
+                          <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
+                            {String(block.input.text)}
+                          </p>
+                        )}
+                        {/* Duration for wait and hold_key actions */}
+                        {isWaitToolUseBlock(block) && (
+                          <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
+                            {`${block.input.duration}ms`}
+                          </p>
+                        )}
+                        {/* Coordinates for click/mouse actions */}
+                        {block.input.coordinates && (
+                          <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
+                            {
+                              (block.input.coordinates as { x: number; y: number })
+                                .x
+                            }
+                            ,{" "}
+                            {
+                              (block.input.coordinates as { x: number; y: number })
+                                .y
+                            }
+                          </p>
+                        )}
+                        {/* Start and end coordinates for path actions */}
+                        {"path" in block.input &&
+                          Array.isArray(block.input.path) &&
+                          block.input.path.every(
+                            (point) =>
+                              point.x !== undefined && point.y !== undefined,
+                          ) && (
+                            <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
+                              From: {block.input.path[0].x}, {block.input.path[0].y}{" "}
+                              → To:{" "}
+                              {block.input.path[block.input.path.length - 1].x},{" "}
+                              {block.input.path[block.input.path.length - 1].y}
+                            </p>
+                          )}
+                        {/* Scroll information */}
+                        {isScrollToolUseBlock(block) && (
+                          <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
+                            {String(block.input.direction)}{" "}
+                            {Number(block.input.numScrolls)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-export function UserMessage({ group }: MessageGroupProps) {
-  // flatten the message content
-  const contentBlocks: MessageContentBlock[] = group.messages.flatMap(
-    (message) => message.content,
-  );
-
+export function UserMessage({ group, messages = [] }: MessageGroupProps) {
   return (
     <div className="mb-4">
-      <div className="flex flex-row-reverse items-start gap-2">
-        <div className="border-bytebot-bronze-light-7 bg-muted flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border">
-          <HugeiconsIcon
-            icon={User03Icon}
-            className="text-bytebot-bronze-dark-9 h-4 w-4"
-          />
-        </div>
-        <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-7 shadow-bytebot max-w-4/5 space-y-2 rounded-md border px-3 py-2">
-          {contentBlocks.map((block, index) => (
-            <div key={index} className="text-bytebot-bronze-dark-9 text-xs">
-              {isTextContentBlock(block) && (
-                <ReactMarkdown>{block.text}</ReactMarkdown>
-              )}
+      {group.messages.map((message) => {
+        const messageIndex = messages.findIndex(m => m.id === message.id);
+        return (
+          <div key={message.id} data-message-index={messageIndex} className="flex flex-row-reverse items-start gap-2 mb-2">
+            <div className="border-bytebot-bronze-light-7 bg-muted flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border">
+              <HugeiconsIcon
+                icon={User03Icon}
+                className="text-bytebot-bronze-dark-9 h-4 w-4"
+              />
             </div>
-          ))}
-        </div>
-      </div>
+            <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-7 shadow-bytebot max-w-4/5 space-y-2 rounded-md border px-3 py-2">
+              {message.content.map((block, index) => (
+                <div key={index} className="text-bytebot-bronze-dark-9 text-xs">
+                  {isTextContentBlock(block) && (
+                    <ReactMarkdown>{block.text}</ReactMarkdown>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

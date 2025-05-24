@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { TaskItem } from "@/components/tasks/TaskItem";
 import { fetchTasks } from "@/utils/taskUtils";
 import { Task } from "@/types";
+import { useWebSocket } from "@/hooks/useWebSocket";
 
 interface TaskListProps {
   limit?: number;
@@ -20,6 +21,33 @@ export const TaskList: React.FC<TaskListProps> = ({
 }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // WebSocket handlers for real-time updates
+  const handleTaskUpdate = useCallback((updatedTask: Task) => {
+    setTasks(prev => 
+      prev.map(task => 
+        task.id === updatedTask.id ? updatedTask : task
+      )
+    );
+  }, []);
+
+  const handleTaskCreated = useCallback((newTask: Task) => {
+    setTasks(prev => {
+      const updated = [newTask, ...prev];
+      return updated.slice(0, limit);
+    });
+  }, [limit]);
+
+  const handleTaskDeleted = useCallback((taskId: string) => {
+    setTasks(prev => prev.filter(task => task.id !== taskId));
+  }, []);
+
+  // Initialize WebSocket for task list updates
+  useWebSocket({
+    onTaskUpdate: handleTaskUpdate,
+    onTaskCreated: handleTaskCreated,
+    onTaskDeleted: handleTaskDeleted,
+  });
 
   useEffect(() => {
     const loadTasks = async () => {

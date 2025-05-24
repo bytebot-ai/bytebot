@@ -1,5 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { webcrypto } from 'crypto';
+
+// Polyfill for crypto global (required by @nestjs/schedule)
+if (!globalThis.crypto) {
+  globalThis.crypto = webcrypto as any;
+}
 
 async function bootstrap() {
   console.log('Starting bytebot-agent application...');

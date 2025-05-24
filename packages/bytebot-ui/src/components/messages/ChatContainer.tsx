@@ -8,6 +8,7 @@ interface ChatContainerProps {
   taskStatus: TaskStatus;
   messages: Message[];
   isLoadingSession: boolean;
+  scrollRef?: React.RefObject<HTMLDivElement>;
 }
 
 export interface GroupedMessages {
@@ -77,6 +78,7 @@ export function ChatContainer({
   taskStatus,
   messages,
   isLoadingSession,
+  scrollRef,
 }: ChatContainerProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Group back-to-back messages from the same role
@@ -93,15 +95,17 @@ export function ChatContainer({
   };
 
   return (
-    <div className="flex-1 overflow-auto p-4">
+    <div ref={scrollRef} className="flex-1 overflow-auto p-4">
       {isLoadingSession ? (
         <div className="flex h-full items-center justify-center">
           <div className="border-t-primary h-8 w-8 animate-spin rounded-full border-4 border-gray-300"></div>
         </div>
       ) : messages.length > 0 ? (
         <>
-          {groupedConversation.map((group, index) => (
-            <MessageGroup key={index} group={group} />
+          {groupedConversation.map((group, groupIndex) => (
+            <div key={groupIndex}>
+              <MessageGroup group={group} messages={messages} />
+            </div>
           ))}
           {taskStatus === TaskStatus.RUNNING && (
             <TextShimmer className="text-sm" duration={2}>

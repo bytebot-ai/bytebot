@@ -32,7 +32,7 @@ export default function Tasks() {
     <div className="flex h-screen flex-col overflow-hidden">
       <Header />
 
-      <main className="flex-1 overflow-hidden px-6 py-6">
+      <main className="flex-1 overflow-scroll px-6 pt-6 pb-10">
         <div className="mx-auto max-w-3xl">
           <h1 className="mb-6 text-xl font-medium">Tasks</h1>
 

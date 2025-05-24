@@ -3,18 +3,25 @@ import {
   NotFoundException,
   Logger,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { Task, Message, Role, Prisma, TaskStatus } from '@prisma/client';
 import { GuideTaskDto } from './dto/guide-task.dto';
+import { TasksGateway } from './tasks.gateway';
 
 @Injectable()
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
 
-  constructor(readonly prisma: PrismaService) {
+  constructor(
+    readonly prisma: PrismaService,
+    @Inject(forwardRef(() => TasksGateway))
+    private readonly tasksGateway: TasksGateway,
+  ) {
     this.logger.log('TasksService initialized');
   }
 
@@ -51,6 +58,8 @@ export class TasksService {
 
       return task;
     });
+
+    this.tasksGateway.emitTaskCreated(task);
 
     return task;
   }
@@ -98,6 +107,7 @@ export class TasksService {
       orderBy: {
         createdAt: 'desc',
       },
+      take: 10,
     });
 
     this.logger.debug(`Retrieved ${tasks.length} tasks`);
@@ -153,6 +163,8 @@ export class TasksService {
     this.logger.log(`Successfully updated task ID: ${id}`);
     this.logger.debug(`Updated task: ${JSON.stringify(updatedTask)}`);
 
+    this.tasksGateway.emitTaskUpdate(id, updatedTask);
+
     return updatedTask;
   }
 
@@ -164,6 +176,8 @@ export class TasksService {
     });
 
     this.logger.log(`Successfully deleted task ID: ${id}`);
+
+    this.tasksGateway.emitTaskDeleted(id);
 
     return deletedTask;
   }
@@ -184,13 +198,15 @@ export class TasksService {
       );
     }
 
-    await this.prisma.message.create({
+    const message = await this.prisma.message.create({
       data: {
         content: [{ type: 'text', text: guideTaskDto.message }],
         role: Role.USER,
         taskId,
       },
     });
+
+    this.tasksGateway.emitNewMessage(taskId, message);
 
     await this.update(taskId, {
       status: TaskStatus.RUNNING,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Message, Role, TaskStatus } from "@/types";
+import { Message, Role, TaskStatus, Task } from "@/types";
 import {
   guideTask,
   fetchTaskMessages,
@@ -7,6 +7,7 @@ import {
   startTask,
 } from "@/utils/taskUtils";
 import { MessageContentType } from "@bytebot/shared";
+import { useWebSocket } from "./useWebSocket";
 
 interface UseChatSessionProps {
   initialTaskId?: string;
@@ -22,85 +23,45 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
 
-  // Use refs to track polling state to avoid closure issues
-  const isPollingRef = useRef(false);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const currentTaskIdRef = useRef<string | null>(currentTaskId);
   const processedMessageIds = useRef<Set<string>>(new Set());
 
-  // Stop polling for messages
-  const stopPolling = useCallback(() => {
-    console.log("Stopping polling");
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
+  // WebSocket event handlers
+  const handleTaskUpdate = useCallback((task: Task) => {
+    if (task.id === currentTaskId) {
+      setTaskStatus(task.status);
     }
-    isPollingRef.current = false;
+  }, [currentTaskId]);
+
+  const handleNewMessage = useCallback((message: Message) => {
+    // Only add message if it's not already processed and belongs to current task
+    if (!processedMessageIds.current.has(message.id) && 
+        message.taskId === currentTaskId) {
+      console.log('Adding new message from WebSocket:', message);
+      processedMessageIds.current.add(message.id);
+      setMessages((prev) => [...prev, message]);
+    }
+  }, [currentTaskId]);
+
+  const handleTaskCreated = useCallback((task: Task) => {
+    console.log('New task created:', task);
   }, []);
 
-  // Fetch new messages from the API
-  const fetchNewMessages = useCallback(async () => {
-    const taskId = currentTaskIdRef.current;
-    if (!taskId) return;
-
-    try {
-      const task = await fetchTaskById(taskId);
-      const messages = await fetchTaskMessages(taskId);
-
-      if (task && messages && messages.length > 0) {
-        setTaskStatus(task.status);
-        // Filter out messages we've already processed to prevent duplicates
-        const filteredMessages = messages.filter(
-          (msg: Message) => !processedMessageIds.current.has(msg.id),
-        );
-
-        if (filteredMessages.length > 0) {
-          console.log(`Adding ${filteredMessages.length} new messages to chat`);
-
-          // Add new message IDs to the processed set
-          filteredMessages.forEach((msg: Message) => {
-            processedMessageIds.current.add(msg.id);
-          });
-
-          // Add new messages to state
-          setMessages((prev) => [...prev, ...filteredMessages]);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching messages:", error);
+  const handleTaskDeleted = useCallback((taskId: string) => {
+    if (taskId === currentTaskId) {
+      console.log('Current task was deleted');
+      setCurrentTaskId(null);
+      setMessages([]);
+      processedMessageIds.current = new Set();
     }
-  }, []);
+  }, [currentTaskId]);
 
-  // Start polling for new messages
-  const startPolling = useCallback(() => {
-    // If already polling, don't start another interval
-    if (isPollingRef.current) {
-      console.log("Already polling, not starting another interval");
-      return;
-    }
-
-    console.log("Starting polling interval");
-    isPollingRef.current = true;
-
-    // Clear any existing interval just to be safe
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-
-    // Poll immediately
-    fetchNewMessages();
-
-    // Then set up interval
-    pollingIntervalRef.current = setInterval(() => {
-      if (currentTaskIdRef.current) {
-        fetchNewMessages();
-      } else {
-        // If task ID is no longer available, stop polling
-        stopPolling();
-      }
-    }, 2000); // Poll every 2 seconds
-  }, [fetchNewMessages, stopPolling]);
+  // Initialize WebSocket connection
+  const { joinTask, leaveTask } = useWebSocket({
+    onTaskUpdate: handleTaskUpdate,
+    onNewMessage: handleNewMessage,
+    onTaskCreated: handleTaskCreated,
+    onTaskDeleted: handleTaskDeleted,
+  });
 
   // Load task ID from URL parameter or fetch the latest task on initial render
   useEffect(() => {
@@ -116,6 +77,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
           if (task) {
             console.log(`Found task: ${task.id}`);
             setCurrentTaskId(task.id);
+            setTaskStatus(task.status); // Set the task status when loading
 
             // If the task has messages, add them to the messages state
             if (messages && messages.length > 0) {
@@ -148,32 +110,16 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
     loadSession();
   }, [initialTaskId]);
 
-  // Update the ref when the state changes
-  useEffect(() => {
-    currentTaskIdRef.current = currentTaskId;
-  }, [currentTaskId]);
-
-  // Set up polling when task ID changes
+  // Join/leave WebSocket task rooms when task ID changes
   useEffect(() => {
     if (currentTaskId) {
-      // Start polling if we have a task ID
-      startPolling();
+      console.log(`Joining WebSocket room for task: ${currentTaskId}`);
+      joinTask(currentTaskId);
     } else {
-      // Otherwise stop polling
-      stopPolling();
+      console.log('Leaving WebSocket task room');
+      leaveTask();
     }
-  }, [currentTaskId, startPolling, stopPolling]);
-
-  // Clean up polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-      isPollingRef.current = false;
-    };
-  }, []);
+  }, [currentTaskId, joinTask, leaveTask]);
 
   const handleStartTask = async () => {
     if (!input.trim()) return;
