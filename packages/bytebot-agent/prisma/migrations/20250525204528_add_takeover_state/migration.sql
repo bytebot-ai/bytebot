@@ -1,0 +1,5 @@
+-- CreateEnum
+CREATE TYPE "TakeOverState" AS ENUM ('AGENT_CONTROL', 'USER_TAKEOVER', 'USER_CONTROL');
+
+-- AlterTable
+ALTER TABLE "Task" ADD COLUMN     "takeOverState" "TakeOverState" NOT NULL DEFAULT 'AGENT_CONTROL';

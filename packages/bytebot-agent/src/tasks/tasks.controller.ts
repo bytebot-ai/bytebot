@@ -67,4 +67,16 @@ export class TasksController {
   ): Promise<Task> {
     return this.tasksService.guideTask(taskId, guideTaskDto);
   }
+
+  @Post(':id/takeover')
+  @HttpCode(HttpStatus.OK)
+  async takeOver(@Param('id') taskId: string): Promise<Task> {
+    return this.tasksService.takeOver(taskId);
+  }
+
+  @Post(':id/resume')
+  @HttpCode(HttpStatus.OK)
+  async resumeControl(@Param('id') taskId: string): Promise<Task> {
+    return this.tasksService.resumeControl(taskId);
+  }
 }

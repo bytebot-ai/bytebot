@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Message, Role, TaskStatus, Task } from "@/types";
+import { Message, Role, TaskStatus, Task, TakeOverState } from "@/types";
 import {
   guideTask,
   fetchTaskMessages,
   fetchTaskById,
   startTask,
+  takeOverTask,
+  resumeTaskControl,
 } from "@/utils/taskUtils";
 import { MessageContentType } from "@bytebot/shared";
 import { useWebSocket } from "./useWebSocket";
@@ -15,6 +17,7 @@ interface UseChatSessionProps {
 
 export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
   const [taskStatus, setTaskStatus] = useState<TaskStatus>(TaskStatus.PENDING);
+  const [takeOverState, setTakeOverState] = useState<TakeOverState>(TakeOverState.AGENT_CONTROL);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(
@@ -29,6 +32,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
   const handleTaskUpdate = useCallback((task: Task) => {
     if (task.id === currentTaskId) {
       setTaskStatus(task.status);
+      setTakeOverState(task.takeOverState);
     }
   }, [currentTaskId]);
 
@@ -78,6 +82,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
             console.log(`Found task: ${task.id}`);
             setCurrentTaskId(task.id);
             setTaskStatus(task.status); // Set the task status when loading
+            setTakeOverState(task.takeOverState);
 
             // If the task has messages, add them to the messages state
             if (messages && messages.length > 0) {
@@ -206,9 +211,36 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
     console.log("Started new conversation");
   };
 
+  const handleTakeOver = async () => {
+    if (!currentTaskId) return;
+
+    try {
+      const updatedTask = await takeOverTask(currentTaskId);
+      if (updatedTask) {
+        setTakeOverState(updatedTask.takeOverState);
+      }
+    } catch (error) {
+      console.error("Error taking over task:", error);
+    }
+  };
+
+  const handleResumeControl = async () => {
+    if (!currentTaskId) return;
+
+    try {
+      const updatedTask = await resumeTaskControl(currentTaskId);
+      if (updatedTask) {
+        setTakeOverState(updatedTask.takeOverState);
+      }
+    } catch (error) {
+      console.error("Error resuming control:", error);
+    }
+  };
+
   return {
     messages,
     taskStatus,
+    takeOverState,
     input,
     setInput,
     currentTaskId,
@@ -216,6 +248,8 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
     isLoadingSession,
     handleGuideTask,
     handleStartTask,
+    handleTakeOver,
+    handleResumeControl,
     startNewConversation,
   };
 }

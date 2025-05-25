@@ -9,7 +9,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
-import { Task, Message, Role, Prisma, TaskStatus } from '@prisma/client';
+import { Task, Message, Role, Prisma, TaskStatus, TakeOverState } from '@prisma/client';
 import { GuideTaskDto } from './dto/guide-task.dto';
 import { TasksGateway } from './tasks.gateway';
 
@@ -82,6 +82,7 @@ export class TasksService {
         status: {
           in: [TaskStatus.RUNNING, TaskStatus.PENDING],
         },
+        takeOverState: TakeOverState.AGENT_CONTROL,
       },
       orderBy: [
         { executedAt: 'asc' },
@@ -189,12 +190,16 @@ export class TasksService {
       throw new NotFoundException(`Task with ID ${taskId} not found`);
     }
 
-    if (task.status != TaskStatus.NEEDS_HELP) {
+    // Allow guiding for NEEDS_HELP status or during takeover
+    const canGuide = task.status === TaskStatus.NEEDS_HELP || 
+                     task.takeOverState !== TakeOverState.AGENT_CONTROL;
+
+    if (!canGuide) {
       this.logger.warn(
-        `Task with ID: ${taskId} is not in NEEDS_HELP status for guiding`,
+        `Task with ID: ${taskId} cannot be guided in current state`,
       );
       throw new BadRequestException(
-        `Task with ID ${taskId} is not in NEEDS_HELP status for guiding`,
+        `Task with ID ${taskId} cannot be guided in current state`,
       );
     }
 
@@ -206,12 +211,83 @@ export class TasksService {
       },
     });
 
+<<<<<<< Updated upstream
     this.tasksGateway.emitNewMessage(taskId, message);
 
+=======
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
     await this.update(taskId, {
       status: TaskStatus.RUNNING,
     });
+=======
+    this.tasksGateway.emitNewMessage(taskId, message);
+
+    // Update task status and resume agent control if in takeover
+    const updateData: any = {};
+    if (task.status === TaskStatus.NEEDS_HELP) {
+      updateData.status = TaskStatus.RUNNING;
+    }
+    if (task.takeOverState !== TakeOverState.AGENT_CONTROL) {
+      updateData.takeOverState = TakeOverState.AGENT_CONTROL;
+      this.logger.log(`Task ${taskId} control automatically resumed after user message`);
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await this.update(taskId, updateData);
+    }
+>>>>>>> Stashed changes
 
     return task;
+  }
+
+  async takeOver(taskId: string): Promise<Task> {
+    this.logger.log(`Taking over control for task ID: ${taskId}`);
+    
+    const task = await this.findById(taskId);
+    if (!task) {
+      throw new NotFoundException(`Task with ID ${taskId} not found`);
+    }
+
+    if (task.takeOverState !== TakeOverState.AGENT_CONTROL) {
+      throw new BadRequestException(`Task ${taskId} is not under agent control`);
+    }
+
+    const updatedTask = await this.prisma.task.update({
+      where: { id: taskId },
+      data: { 
+        takeOverState: TakeOverState.USER_TAKEOVER,
+      },
+    });
+
+    this.logger.log(`Task ${taskId} takeover initiated`);
+    this.tasksGateway.emitTaskUpdate(taskId, updatedTask);
+
+    return updatedTask;
+  }
+
+  async resumeControl(taskId: string): Promise<Task> {
+    this.logger.log(`Resuming agent control for task ID: ${taskId}`);
+    
+    const task = await this.findById(taskId);
+    if (!task) {
+      throw new NotFoundException(`Task with ID ${taskId} not found`);
+    }
+
+    if (task.takeOverState === TakeOverState.AGENT_CONTROL) {
+      throw new BadRequestException(`Task ${taskId} is already under agent control`);
+    }
+
+    const updatedTask = await this.prisma.task.update({
+      where: { id: taskId },
+      data: { 
+        takeOverState: TakeOverState.AGENT_CONTROL,
+      },
+    });
+
+    this.logger.log(`Task ${taskId} control resumed by agent`);
+    this.tasksGateway.emitTaskUpdate(taskId, updatedTask);
+
+    return updatedTask;
   }
 }

@@ -137,3 +137,49 @@ export async function fetchTasks(): Promise<Task[]> {
     return [];
   }
 }
+
+export async function takeOverTask(taskId: string): Promise<Task | null> {
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL}/tasks/${taskId}/takeover`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to take over task");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error taking over task:", error);
+    return null;
+  }
+}
+
+export async function resumeTaskControl(taskId: string): Promise<Task | null> {
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL}/tasks/${taskId}/resume`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to resume task control");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error resuming task control:", error);
+    return null;
+  }
+}

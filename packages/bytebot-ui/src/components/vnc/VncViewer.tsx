@@ -2,7 +2,11 @@
 
 import React, { useRef, useEffect, useState } from "react";
 
-export function VncViewer() {
+interface VncViewerProps {
+  viewOnly?: boolean;
+}
+
+export function VncViewer({ viewOnly = true }: VncViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [VncComponent, setVncComponent] = useState<any>(null);
@@ -20,7 +24,7 @@ export function VncViewer() {
         <VncComponent
           url={process.env.NEXT_PUBLIC_BYTEBOT_DESKTOP_VNC_URL}
           scaleViewport={true}
-          viewOnly={true}
+          viewOnly={viewOnly}
           style={{ width: "100%", height: "100%" }}
         />
       )}

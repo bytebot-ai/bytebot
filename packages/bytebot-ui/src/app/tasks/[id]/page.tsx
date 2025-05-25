@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { TaskStatus } from "@/types";
+import { TaskStatus, TakeOverState } from "@/types";
 
 export default function TaskPage() {
   const params = useParams();
@@ -29,11 +29,14 @@ export default function TaskPage() {
   const {
     messages,
     taskStatus,
+    takeOverState,
     input,
     setInput,
     isLoading,
     isLoadingSession,
     handleGuideTask,
+    handleTakeOver,
+    handleResumeControl,
     currentTaskId,
   } = useChatSession({ initialTaskId: taskId });
 
@@ -43,6 +46,17 @@ export default function TaskPage() {
   const isTaskInactive = taskStatus === TaskStatus.COMPLETED || 
                          taskStatus === TaskStatus.FAILED || 
                          taskStatus === TaskStatus.CANCELLED;
+
+  // Determine if user can take control
+  const canTakeOver = takeOverState === TakeOverState.AGENT_CONTROL && 
+                      (taskStatus === TaskStatus.RUNNING || taskStatus === TaskStatus.PENDING);
+  
+  // Determine if user has control or is in takeover mode
+  const hasUserControl = takeOverState === TakeOverState.USER_TAKEOVER || 
+                          takeOverState === TakeOverState.USER_CONTROL;
+
+  // Determine VNC mode - interactive when user has control, view-only otherwise
+  const vncViewOnly = !hasUserControl;
 
   // Use scroll screenshot hook for inactive tasks
   const { currentScreenshot, allScreenshots } = useScrollScreenshot({
@@ -129,17 +143,42 @@ export default function TaskPage() {
                   <span className="text-sm font-medium text-bytebot-bronze-dark-8">
                     {isTaskInactive 
                       ? `Task ${taskStatus.toLowerCase()} - Screenshot View` 
-                      : taskStatus === TaskStatus.RUNNING 
-                        ? 'Live Desktop View' 
-                        : `Task ${taskStatus.toLowerCase()} - Live View`
+                      : hasUserControl
+                        ? 'User Control - Interactive'
+                        : taskStatus === TaskStatus.RUNNING 
+                          ? 'Agent Control - Live View' 
+                          : `Task ${taskStatus.toLowerCase()} - Live View`
                     }
                   </span>
                 </div>
-{isTaskInactive && currentScreenshot && (
-                  <span className="text-xs text-bytebot-bronze-light-11 bg-bytebot-bronze-light-3 px-2 py-1 rounded">
-                    Screenshot {allScreenshots.findIndex(s => s.id === currentScreenshot.id) + 1} of {allScreenshots.length}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {canTakeOver && (
+                    <button
+                      onClick={handleTakeOver}
+                      className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors"
+                    >
+                      Take Over
+                    </button>
+                  )}
+                  {hasUserControl && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-orange-600 font-medium">
+                        You have control
+                      </span>
+                      <button
+                        onClick={handleResumeControl}
+                        className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
+                      >
+                        Resume Agent
+                      </button>
+                    </div>
+                  )}
+                  {isTaskInactive && currentScreenshot && (
+                    <span className="text-xs text-bytebot-bronze-light-11 bg-bytebot-bronze-light-3 px-2 py-1 rounded">
+                      Screenshot {allScreenshots.findIndex(s => s.id === currentScreenshot.id) + 1} of {allScreenshots.length}
+                    </span>
+                  )}
+                </div>
               </div>
               
               <div
@@ -159,7 +198,7 @@ export default function TaskPage() {
                       className="w-full h-full shadow-bytebot"
                     />
                   ) : (
-                    <VncViewer />
+                    <VncViewer viewOnly={vncViewOnly} />
                   )}
                 </div>
               </div>
@@ -174,12 +213,12 @@ export default function TaskPage() {
                 taskStatus={taskStatus}
                 messages={messages}
                 isLoadingSession={isLoadingSession}
-                scrollRef={chatContainerRef}
+                scrollRef={chatContainerRef as React.RefObject<HTMLDivElement>}
               />
             </div>
             {/* Fixed chat input */}
 
-            {taskStatus === TaskStatus.NEEDS_HELP && (
+            {(taskStatus === TaskStatus.NEEDS_HELP || hasUserControl) && (
               <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot rounded-2xl border-[0.5px] p-2">
                 <ChatInput
                   input={input}
@@ -187,6 +226,7 @@ export default function TaskPage() {
                   onInputChange={setInput}
                   onSend={handleGuideTask}
                   minLines={1}
+                  placeholder={hasUserControl ? "Send a message to resume agent control..." : ""}
                 />
                 <div className="mt-2">
                   <Select value="sonnet-4">

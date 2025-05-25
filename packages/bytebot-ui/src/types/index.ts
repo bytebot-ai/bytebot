@@ -32,11 +32,18 @@ export enum TaskPriority {
   URGENT = "URGENT",
 }
 
+export enum TakeOverState {
+  AGENT_CONTROL = "AGENT_CONTROL",
+  USER_TAKEOVER = "USER_TAKEOVER", 
+  USER_CONTROL = "USER_CONTROL",
+}
+
 export interface Task {
   id: string;
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
+  takeOverState: TakeOverState;
   createdAt: string;
   updatedAt: string;
 }
