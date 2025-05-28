@@ -6,7 +6,9 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
-import { ComputerUseService, ComputerAction } from './computer-use.service';
+import { ComputerUseService } from './computer-use.service';
+import { ComputerActionValidationPipe } from './dto/computer-action-validation.pipe';
+import { ComputerActionDto } from './dto/computer-action.dto';
 
 @Controller('computer-use')
 export class ComputerUseController {
@@ -15,7 +17,9 @@ export class ComputerUseController {
   constructor(private readonly computerUseService: ComputerUseService) {}
 
   @Post()
-  async action(@Body() params: ComputerAction) {
+  async action(
+    @Body(new ComputerActionValidationPipe()) params: ComputerActionDto,
+  ) {
     try {
       this.logger.log(`Computer action request: ${JSON.stringify(params)}`);
       return await this.computerUseService.action(params);

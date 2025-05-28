@@ -124,17 +124,14 @@ export class AgentProcessor {
               );
 
               // if the block input type exists, convert it to uppercase and use it as the type
-              const type = block.input.type
-                ? (block.input.type.toUpperCase() as TaskType)
-                : TaskType.IMMEDIATE;
-
-              const priority = block.input.priority
-                ? (block.input.priority.toUpperCase() as TaskPriority)
-                : TaskPriority.MEDIUM;
+              const type = block.input.type?.toUpperCase() as TaskType;
+              const priority =
+                block.input.priority?.toUpperCase() as TaskPriority;
 
               await this.tasksService.create({
                 description: block.input.description,
                 type,
+                createdBy: Role.ASSISTANT,
                 ...(block.input.scheduledFor && {
                   scheduledFor: new Date(block.input.scheduledFor),
                 }),
@@ -161,6 +158,7 @@ export class AgentProcessor {
                 case 'completed': {
                   await this.tasksService.update(taskId, {
                     status: TaskStatus.COMPLETED,
+                    completedAt: new Date(),
                   });
                   break;
                 }

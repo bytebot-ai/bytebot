@@ -1,6 +1,6 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
-import { Role } from "@/types";
+import { Message, Role } from "@/types";
 import {
   isImageContentBlock,
   isTextContentBlock,
@@ -29,10 +29,7 @@ import {
   MouseRightClick06Icon,
   TimeQuarter02Icon,
 } from "@hugeicons/core-free-icons";
-import {
-  ComputerToolUseContentBlock,
-  MessageContentBlock,
-} from "@bytebot/shared";
+import { ComputerToolUseContentBlock } from "@bytebot/shared";
 import { GroupedMessages } from "./ChatContainer";
 
 // Define the IconType for proper type checking
@@ -46,7 +43,7 @@ type IconType =
 
 interface MessageGroupProps {
   group: GroupedMessages;
-  messages?: any[]; // All messages for finding indices
+  messages?: Message[];
 }
 
 function getIcon(block: ComputerToolUseContentBlock): IconType {
@@ -159,31 +156,11 @@ export function MessageGroup({ group, messages = [] }: MessageGroupProps) {
 }
 
 export function AssistantMessage({ group, messages = [] }: MessageGroupProps) {
-  // flatten the message content
-  const contentBlocks: MessageContentBlock[] = group.messages
-    .flatMap((message) => message.content)
-    .filter((block) => {
-      // If the block is a screenshot tool result, keep it
-      if (
-        isToolResultContentBlock(block) &&
-        isImageContentBlock(block.content?.[0])
-      ) {
-        return true;
-      }
-
-      // If the block is a tool result and it is not an error, remove it
-      if (isToolResultContentBlock(block) && !block.is_error) {
-        return false;
-      }
-
-      return true;
-    });
-
   return (
     <div className="mb-4">
       {group.messages.map((message) => {
-        const messageIndex = messages.findIndex(m => m.id === message.id);
-        
+        const messageIndex = messages.findIndex((m) => m.id === message.id);
+
         // Filter content blocks and check if any visible content remains
         const visibleBlocks = message.content.filter((block) => {
           // Filter logic from the original code
@@ -198,14 +175,18 @@ export function AssistantMessage({ group, messages = [] }: MessageGroupProps) {
           }
           return true;
         });
-        
+
         // Skip rendering if no visible content
         if (visibleBlocks.length === 0) {
           return null;
         }
-        
+
         return (
-          <div key={message.id} data-message-index={messageIndex} className="flex items-start gap-2 mb-2">
+          <div
+            key={message.id}
+            data-message-index={messageIndex}
+            className="mb-2 flex items-start gap-2"
+          >
             <div className="border-bytebot-bronze-light-7 flex h-[28px] w-[28px] flex-shrink-0 items-center justify-center rounded-sm border bg-white">
               <Image
                 src="/bytebot_square_light.svg"
@@ -225,8 +206,8 @@ export function AssistantMessage({ group, messages = [] }: MessageGroupProps) {
                   )}
 
                   {isImageContentBlock(block.content?.[0]) && (
-                    <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-7 shadow-bytebot max-w-4/5 rounded-md border overflow-hidden">
-                      <div className="flex items-center gap-2 px-3 py-2 border-b border-bytebot-bronze-light-7">
+                    <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-7 shadow-bytebot max-w-4/5 overflow-hidden rounded-md border">
+                      <div className="border-bytebot-bronze-light-7 flex items-center gap-2 border-b px-3 py-2">
                         <HugeiconsIcon
                           icon={Camera01Icon}
                           className="text-bytebot-bronze-dark-9 h-4 w-4"
@@ -235,7 +216,7 @@ export function AssistantMessage({ group, messages = [] }: MessageGroupProps) {
                           Screenshot taken
                         </p>
                       </div>
-                      <div className="relative w-full h-48">
+                      <div className="relative h-48 w-full">
                         <Image
                           src={`data:image/png;base64,${block.content[0].source.data}`}
                           alt="Screenshot"
@@ -265,7 +246,11 @@ export function AssistantMessage({ group, messages = [] }: MessageGroupProps) {
                         )}
                         {isTypeTextToolUseBlock(block) && (
                           <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
-                            {String(block.input.text)}
+                            {String(
+                              block.input.isSensitive
+                                ? "●".repeat(block.input.text.length)
+                                : block.input.text,
+                            )}
                           </p>
                         )}
                         {/* Duration for wait and hold_key actions */}
@@ -278,13 +263,21 @@ export function AssistantMessage({ group, messages = [] }: MessageGroupProps) {
                         {block.input.coordinates && (
                           <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
                             {
-                              (block.input.coordinates as { x: number; y: number })
-                                .x
+                              (
+                                block.input.coordinates as {
+                                  x: number;
+                                  y: number;
+                                }
+                              ).x
                             }
                             ,{" "}
                             {
-                              (block.input.coordinates as { x: number; y: number })
-                                .y
+                              (
+                                block.input.coordinates as {
+                                  x: number;
+                                  y: number;
+                                }
+                              ).y
                             }
                           </p>
                         )}
@@ -296,8 +289,8 @@ export function AssistantMessage({ group, messages = [] }: MessageGroupProps) {
                               point.x !== undefined && point.y !== undefined,
                           ) && (
                             <p className="bg-bytebot-bronze-light-1 border-bytebot-bronze-light-7 text-bytebot-bronze-light-11 rounded-md border px-1 py-0.5 text-xs">
-                              From: {block.input.path[0].x}, {block.input.path[0].y}{" "}
-                              → To:{" "}
+                              From: {block.input.path[0].x},{" "}
+                              {block.input.path[0].y} → To:{" "}
                               {block.input.path[block.input.path.length - 1].x},{" "}
                               {block.input.path[block.input.path.length - 1].y}
                             </p>
@@ -326,9 +319,13 @@ export function UserMessage({ group, messages = [] }: MessageGroupProps) {
   return (
     <div className="mb-4">
       {group.messages.map((message) => {
-        const messageIndex = messages.findIndex(m => m.id === message.id);
+        const messageIndex = messages.findIndex((m) => m.id === message.id);
         return (
-          <div key={message.id} data-message-index={messageIndex} className="flex flex-row-reverse items-start gap-2 mb-2">
+          <div
+            key={message.id}
+            data-message-index={messageIndex}
+            className="mb-2 flex flex-row-reverse items-start gap-2"
+          >
             <div className="border-bytebot-bronze-light-7 bg-muted flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border">
               <HugeiconsIcon
                 icon={User03Icon}

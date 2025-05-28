@@ -209,8 +209,7 @@ export const scrollTool: Anthropic.Tool = {
         },
         required: ['x', 'y'],
         description:
-          'Optional coordinates for where the scroll should occur. Behavior might depend on the OS/application.',
-        nullable: true,
+          'Coordinates for where the scroll should occur. Behavior might depend on the OS/application.',
       },
       direction: {
         type: 'string',
@@ -228,7 +227,7 @@ export const scrollTool: Anthropic.Tool = {
         nullable: true,
       },
     },
-    required: ['direction', 'numScrolls'],
+    required: ['coordinates', 'direction', 'numScrolls'],
   },
 };
 
@@ -295,6 +294,12 @@ export const typeTextTool: Anthropic.Tool = {
         type: 'number',
         description:
           'Optional delay in milliseconds between character presses.',
+        nullable: true,
+      },
+      isSensitive: {
+        type: 'boolean',
+        description:
+          'Optional flag to indicate if the text contains sensitive information.',
         nullable: true,
       },
     },
@@ -367,7 +372,7 @@ export const createTaskTool: Anthropic.Tool = {
       },
       type: {
         type: 'string',
-        enum: ['immediate', 'scheduled'],
+        enum: ['IMMEDIATE', 'SCHEDULED'],
         description: 'The type of the task. Default is immediate.',
       },
       scheduledFor: {
@@ -378,7 +383,7 @@ export const createTaskTool: Anthropic.Tool = {
       },
       priority: {
         type: 'string',
-        enum: ['low', 'medium', 'high', 'urgent'],
+        enum: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'],
         description: 'The priority of the task. Default is medium.',
       },
     },
@@ -401,4 +406,5 @@ export const anthropicTools: Anthropic.Tool[] = [
   screenshotTool,
   cursorPositionTool,
   setTaskStatusTool,
+  createTaskTool,
 ];

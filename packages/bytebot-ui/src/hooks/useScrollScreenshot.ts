@@ -87,7 +87,7 @@ export function useScrollScreenshot({ messages, scrollContainerRef }: UseScrollS
       const style = getComputedStyle(parent);
       if (parent.scrollHeight > parent.clientHeight || ['auto', 'scroll'].includes(style.overflow) || ['auto', 'scroll'].includes(style.overflowY)) {
         parent.addEventListener('scroll', scrollHandler, { passive: true });
-        cleanupFunctions.push(() => parent.removeEventListener('scroll', scrollHandler));
+        cleanupFunctions.push(() => parent?.removeEventListener('scroll', scrollHandler));
       }
       parent = parent.parentElement;
       level++;

@@ -112,7 +112,12 @@ RUN install -m 0755 -d /etc/thunderbird/policies && \
       "MoreFromMozilla": false
     },
     "OverrideFirstRunPage": "",
-    "OverridePostUpdatePage": ""
+    "OverridePostUpdatePage": "",
+    "InAppNotification": {
+        "DonationEnabled": false,
+        "SurveyEnabled": false,
+        "MessageEnabled": false
+    }
   }
 }
 EOF

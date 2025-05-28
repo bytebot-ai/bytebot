@@ -94,6 +94,16 @@ const XKeySymToNutKeyMapLowercase: Record<string, Key> = Object.entries(
   {} as Record<string, Key>,
 );
 
+const NutKeyMap = Object.entries(Key)
+  .filter(([name]) => isNaN(Number(name)))
+  .reduce(
+    (map, [name, value]) => {
+      map[name] = value as Key;
+      return map;
+    },
+    {} as Record<string, Key>,
+  );
+
 // Create a map of lowercase keys to nutjs keys
 const NutKeyMapLowercase: Record<string, Key> = Object.entries(Key)
   // we only want the string→number pairs (filter out the reverse numeric keys)
@@ -175,20 +185,15 @@ export class NutService {
    */
   private validateKey(key: string): Key {
     // Try exact matches first
-    let nutKey: Key | undefined =
-      XKeySymToNutKeyMap[key] || Key[key as keyof typeof Key];
+    let nutKey: Key | undefined = XKeySymToNutKeyMap[key] || NutKeyMap[key];
 
     // If not found, try case-insensitive matching
     if (nutKey === undefined) {
       const lowerKey = key.toLowerCase();
 
-      // Try to find case-insensitive match in XKeySymToNutKeyMapLowercase
-      nutKey = XKeySymToNutKeyMapLowercase[lowerKey];
-
-      // If still not found, try case-insensitive match in NutKeyMapLowercase
-      if (nutKey === undefined) {
-        nutKey = NutKeyMapLowercase[lowerKey];
-      }
+      // Try to find case-insensitive match in XKeySymToNutKeyMapLowercase or NutKeyMapLowercase
+      nutKey =
+        XKeySymToNutKeyMapLowercase[lowerKey] || NutKeyMapLowercase[lowerKey];
     }
 
     if (nutKey === undefined) {
@@ -247,20 +252,20 @@ export class NutService {
   ): { keyCode: Key; withShift: boolean } | null {
     // Handle lowercase letters
     if (/^[a-z]$/.test(char)) {
-      return { keyCode: XKeySymToNutKeyMap[char], withShift: false };
+      return { keyCode: this.validateKey(char), withShift: false };
     }
 
     // Handle uppercase letters (need to send shift + lowercase)
     if (/^[A-Z]$/.test(char)) {
       return {
-        keyCode: XKeySymToNutKeyMap[char.toLowerCase()],
+        keyCode: this.validateKey(char.toLowerCase()),
         withShift: true,
       };
     }
 
     // Handle numbers
     if (/^[0-9]$/.test(char)) {
-      return { keyCode: XKeySymToNutKeyMap[char], withShift: false };
+      return { keyCode: this.validateKey(char), withShift: false };
     }
 
     // Handle special characters
@@ -301,6 +306,7 @@ export class NutService {
         '>': { keyCode: Key.Period, withShift: true },
         '?': { keyCode: Key.Slash, withShift: true },
         '~': { keyCode: Key.Grave, withShift: true },
+        '\n': { keyCode: Key.Enter, withShift: false },
       };
 
     return specialCharMap[char] || null;

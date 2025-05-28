@@ -110,6 +110,7 @@ export type TypeTextToolUseBlock = ToolUseContentBlock & {
   name: "computer_type_text";
   input: {
     text: string;
+    isSensitive?: boolean;
     delay?: number;
   };
 };

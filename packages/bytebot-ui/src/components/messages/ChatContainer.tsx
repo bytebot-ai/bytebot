@@ -8,7 +8,7 @@ interface ChatContainerProps {
   taskStatus: TaskStatus;
   messages: Message[];
   isLoadingSession: boolean;
-  scrollRef?: React.RefObject<HTMLDivElement>;
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export interface GroupedMessages {

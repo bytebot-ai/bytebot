@@ -9,7 +9,16 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
-import { Task, Message, Role, Prisma, TaskStatus, TakeOverState } from '@prisma/client';
+import {
+  Task,
+  Message,
+  Role,
+  Prisma,
+  TaskStatus,
+  TaskType,
+  TaskPriority,
+  TakeOverState,
+} from '@prisma/client';
 import { GuideTaskDto } from './dto/guide-task.dto';
 import { TasksGateway } from './tasks.gateway';
 
@@ -36,6 +45,13 @@ export class TasksService {
       const task = await prisma.task.create({
         data: {
           description: createTaskDto.description,
+          type: createTaskDto.type || TaskType.IMMEDIATE,
+          priority: createTaskDto.priority || TaskPriority.MEDIUM,
+          status: TaskStatus.PENDING,
+          createdBy: createTaskDto.createdBy || Role.USER,
+          ...(createTaskDto.scheduledFor
+            ? { scheduledFor: createTaskDto.scheduledFor }
+            : {}),
         },
       });
       this.logger.log(`Task created successfully with ID: ${task.id}`);
@@ -211,16 +227,6 @@ export class TasksService {
       },
     });
 
-<<<<<<< Updated upstream
-    this.tasksGateway.emitNewMessage(taskId, message);
-
-=======
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-    await this.update(taskId, {
-      status: TaskStatus.RUNNING,
-    });
-=======
     this.tasksGateway.emitNewMessage(taskId, message);
 
     // Update task status and resume agent control if in takeover
@@ -236,7 +242,6 @@ export class TasksService {
     if (Object.keys(updateData).length > 0) {
       await this.update(taskId, updateData);
     }
->>>>>>> Stashed changes
 
     return task;
   }

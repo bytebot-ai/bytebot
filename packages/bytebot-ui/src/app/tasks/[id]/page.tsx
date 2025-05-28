@@ -43,9 +43,10 @@ export default function TaskPage() {
   const [isMounted, setIsMounted] = useState(false);
 
   // Determine if task is inactive (show screenshot) or active (show VNC)
-  const isTaskInactive = taskStatus === TaskStatus.COMPLETED || 
-                         taskStatus === TaskStatus.FAILED || 
-                         taskStatus === TaskStatus.CANCELLED;
+  const isTaskInactive =
+    taskStatus === TaskStatus.COMPLETED ||
+    taskStatus === TaskStatus.FAILED ||
+    taskStatus === TaskStatus.CANCELLED;
 
   // Determine if user can take control
   const canTakeOver = takeOverState === TakeOverState.AGENT_CONTROL && 
@@ -116,7 +117,6 @@ export default function TaskPage() {
     return () => window.removeEventListener("resize", updateSize);
   }, [isMounted]);
 
-
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <Header />
@@ -125,9 +125,12 @@ export default function TaskPage() {
         <div className="grid h-full grid-cols-7 gap-4">
           {/* Main container */}
           <div className="col-span-4">
-            <div className="border-bytebot-bronze-light-5 shadow-bytebot flex aspect-[4/3] w-full flex-col rounded-lg border">
+            <div
+              ref={containerRef}
+              className="border-bytebot-bronze-light-5 shadow-bytebot flex aspect-[4/3] w-full flex-col rounded-lg border"
+            >
               {/* Status Header */}
-              <div className="flex items-center justify-between rounded-t-lg px-4 py-2 border-b border-bytebot-bronze-light-5 bg-bytebot-bronze-light-1">
+              <div className="border-bytebot-bronze-light-5 bg-bytebot-bronze-light-1 flex items-center justify-between rounded-t-lg border-b px-4 py-2">
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${
                     taskStatus === TaskStatus.COMPLETED 
@@ -180,11 +183,8 @@ export default function TaskPage() {
                   )}
                 </div>
               </div>
-              
-              <div
-                ref={containerRef}
-                className="flex-1 overflow-hidden rounded-b-[14px]"
-              >
+
+              <div className="flex-1 rounded-b-[14px]">
                 <div
                   style={{
                     width: `${containerSize.width}px`,
@@ -193,9 +193,9 @@ export default function TaskPage() {
                   }}
                 >
                   {isTaskInactive ? (
-                    <ScreenshotViewer 
+                    <ScreenshotViewer
                       screenshot={currentScreenshot}
-                      className="w-full h-full shadow-bytebot"
+                      className="shadow-bytebot h-full w-full"
                     />
                   ) : (
                     <VncViewer viewOnly={vncViewOnly} />
