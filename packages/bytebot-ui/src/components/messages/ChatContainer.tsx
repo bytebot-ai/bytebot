@@ -6,6 +6,7 @@ import { TextShimmer } from "../ui/text-shimmer";
 
 interface ChatContainerProps {
   taskStatus: TaskStatus;
+  control: Role;
   messages: Message[];
   isLoadingSession: boolean;
   scrollRef?: React.RefObject<HTMLDivElement | null>;
@@ -76,6 +77,7 @@ function filterMessages(messages: Message[]): Message[] {
 
 export function ChatContainer({
   taskStatus,
+  control,
   messages,
   isLoadingSession,
   scrollRef,
@@ -107,7 +109,7 @@ export function ChatContainer({
               <MessageGroup group={group} messages={messages} />
             </div>
           ))}
-          {taskStatus === TaskStatus.RUNNING && (
+          {taskStatus === TaskStatus.RUNNING && control === Role.ASSISTANT && (
             <TextShimmer className="text-sm" duration={2}>
               Bytebot is working...
             </TextShimmer>

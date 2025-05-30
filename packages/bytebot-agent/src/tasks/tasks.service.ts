@@ -97,6 +97,7 @@ export class TasksService {
         status: {
           in: [TaskStatus.RUNNING, TaskStatus.PENDING],
         },
+        control: Role.ASSISTANT,
       },
       orderBy: [
         { executedAt: 'asc' },
@@ -204,12 +205,16 @@ export class TasksService {
       throw new NotFoundException(`Task with ID ${taskId} not found`);
     }
 
-    if (task.status != TaskStatus.NEEDS_HELP) {
+    // Allow guiding for NEEDS_HELP status or during takeover
+    const canGuide = task.status === TaskStatus.NEEDS_HELP || 
+                     task.control !== Role.ASSISTANT;
+
+    if (!canGuide) {
       this.logger.warn(
-        `Task with ID: ${taskId} is not in NEEDS_HELP status for guiding`,
+        `Task with ID: ${taskId} cannot be guided in current state`,
       );
       throw new BadRequestException(
-        `Task with ID ${taskId} is not in NEEDS_HELP status for guiding`,
+        `Task with ID ${taskId} cannot be guided in current state`,
       );
     }
 
@@ -223,10 +228,44 @@ export class TasksService {
 
     this.tasksGateway.emitNewMessage(taskId, message);
 
-    await this.update(taskId, {
-      status: TaskStatus.RUNNING,
-    });
+    const updateData: any = {};
+    if (task.status === TaskStatus.NEEDS_HELP) {
+      updateData.status = TaskStatus.RUNNING;
+    }
+    if (task.control !== Role.ASSISTANT) {
+      updateData.control = Role.ASSISTANT;
+      this.logger.log(`Task ${taskId} control automatically resumed after user message`);
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await this.update(taskId, updateData);
+    }
 
     return task;
+  }
+
+  async takeOver(taskId: string): Promise<Task> {
+    this.logger.log(`Taking over control for task ID: ${taskId}`);
+
+    const task = await this.findById(taskId);
+    if (!task) {
+      throw new NotFoundException(`Task with ID ${taskId} not found`);
+    }
+
+    if (task.control !== Role.ASSISTANT) {
+      throw new BadRequestException(`Task ${taskId} is not under agent control`);
+    }
+
+    const updatedTask = await this.prisma.task.update({
+      where: { id: taskId },
+      data: { 
+        control: Role.USER,
+      },
+    });
+
+    this.logger.log(`Task ${taskId} takeover initiated`);
+    this.tasksGateway.emitTaskUpdate(taskId, updatedTask);
+
+    return updatedTask;
   }
 }

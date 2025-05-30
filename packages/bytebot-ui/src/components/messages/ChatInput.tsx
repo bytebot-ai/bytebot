@@ -10,9 +10,10 @@ interface ChatInputProps {
   onInputChange: (value: string) => void;
   onSend: () => void;
   minLines?: number;
+  placeholder?: string;
 }
 
-export function ChatInput({ input, isLoading, onInputChange, onSend, minLines = 1 }: ChatInputProps) {
+export function ChatInput({ input, isLoading, onInputChange, onSend, minLines = 1, placeholder = "Ask me to do something..." }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -45,7 +46,7 @@ export function ChatInput({ input, isLoading, onInputChange, onSend, minLines = 
       <form onSubmit={handleSubmit} className="relative">
         <textarea
           ref={textareaRef}
-          placeholder="Ask me to do something..."
+          placeholder={placeholder}
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
           className={cn(

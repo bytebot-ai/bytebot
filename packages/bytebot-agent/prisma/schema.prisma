@@ -41,22 +41,23 @@ enum TaskType {
 }
 
 model Task {
-  id          String       @id @default(uuid())
-  description String
-  type        TaskType     @default(IMMEDIATE)
-  status      TaskStatus   @default(PENDING)
-  priority    TaskPriority @default(MEDIUM)
-  createdAt   DateTime     @default(now())
-  createdBy   Role         @default(USER)
-  scheduledFor DateTime?
-  updatedAt   DateTime     @updatedAt
-  executedAt  DateTime?
-  completedAt DateTime?
-  queuedAt    DateTime?
-  error       String?
-  result      Json?
-  messages    Message[]
-  summaries   Summary[]
+  id            String        @id @default(uuid())
+  description   String
+  type          TaskType      @default(IMMEDIATE)
+  status        TaskStatus    @default(PENDING)
+  priority      TaskPriority  @default(MEDIUM)
+  control       Role          @default(ASSISTANT)
+  createdAt     DateTime      @default(now())
+  createdBy     Role          @default(USER)
+  scheduledFor  DateTime?
+  updatedAt     DateTime      @updatedAt
+  executedAt    DateTime?
+  completedAt   DateTime?
+  queuedAt      DateTime?
+  error         String?
+  result        Json?
+  messages      Message[]
+  summaries     Summary[]
 }
 
 model Summary {

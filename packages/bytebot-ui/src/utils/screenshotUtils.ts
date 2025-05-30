@@ -56,8 +56,8 @@ export function getScreenshotForScrollPosition(
   const containerScrollTop = scrollContainer.scrollTop;
   const containerHeight = scrollContainer.clientHeight;
 
-  // Find the message that's most visible at 150px down from the top of the container
-  const targetViewPosition = 150; // 150px down from top
+  // Find the message that's most visible at 350px down from the top of the container
+  const targetViewPosition = 350; // 350px down from top
   let bestVisibleMessageIndex = 0;
   let bestVisibility = 0;
   let minDistanceFromTarget = Infinity;

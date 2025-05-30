@@ -5,6 +5,7 @@ import {
   fetchTaskMessages,
   fetchTaskById,
   startTask,
+  takeOverTask,
 } from "@/utils/taskUtils";
 import { MessageContentType } from "@bytebot/shared";
 import { useWebSocket } from "./useWebSocket";
@@ -15,6 +16,7 @@ interface UseChatSessionProps {
 
 export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
   const [taskStatus, setTaskStatus] = useState<TaskStatus>(TaskStatus.PENDING);
+  const [control, setControl] = useState<Role>(Role.ASSISTANT);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(
@@ -29,6 +31,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
   const handleTaskUpdate = useCallback((task: Task) => {
     if (task.id === currentTaskId) {
       setTaskStatus(task.status);
+      setControl(task.control);
     }
   }, [currentTaskId]);
 
@@ -78,6 +81,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
             console.log(`Found task: ${task.id}`);
             setCurrentTaskId(task.id);
             setTaskStatus(task.status); // Set the task status when loading
+            setControl(task.control);
 
             // If the task has messages, add them to the messages state
             if (messages && messages.length > 0) {
@@ -206,9 +210,23 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
     console.log("Started new conversation");
   };
 
+  const handleTakeOver = async () => {
+    if (!currentTaskId) return;
+
+    try {
+      const updatedTask = await takeOverTask(currentTaskId);
+      if (updatedTask) {
+        setControl(updatedTask.control);
+      }
+    } catch (error) {
+      console.error("Error taking over task:", error);
+    }
+  };
+
   return {
     messages,
     taskStatus,
+    control,
     input,
     setInput,
     currentTaskId,
@@ -217,5 +235,6 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
     handleGuideTask,
     handleStartTask,
     startNewConversation,
+    handleTakeOver,
   };
 }

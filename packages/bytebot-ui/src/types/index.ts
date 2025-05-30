@@ -37,6 +37,7 @@ export interface Task {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
+  control: Role;
   createdAt: string;
   updatedAt: string;
 }
