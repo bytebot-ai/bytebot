@@ -30,12 +30,15 @@ import {
   ToolResultContentBlock,
 } from '@bytebot/shared';
 import { ConfigService } from '@nestjs/config';
+import { io, Socket } from 'socket.io-client';
 
 @Injectable()
 export class AgentProcessor {
   private readonly logger = new Logger(AgentProcessor.name);
   private currentTaskId: string | null = null;
   private isProcessing = false;
+  private inputSocket: Socket | null = null;
+  private capturingInput = false;
 
   constructor(
     private readonly tasksService: TasksService,
@@ -67,9 +70,17 @@ export class AgentProcessor {
       let task = await this.tasksService.findById(taskId);
       this.currentTaskId = taskId;
       this.isProcessing = true;
+      let userControl = task.control !== Role.ASSISTANT;
+      if (userControl) {
+        this.startInputCapture();
+      }
 
       while (task.status == TaskStatus.RUNNING) {
         if (task.control != Role.ASSISTANT) {
+          if (!userControl) {
+            this.startInputCapture();
+            userControl = true;
+          }
           // wait 2 seconds and loop
           this.logger.log(
             `Task ${taskId} is not under agent control, waiting 2 seconds before looping`,
@@ -77,6 +88,9 @@ export class AgentProcessor {
           await new Promise((resolve) => setTimeout(resolve, 2000));
           task = await this.tasksService.findById(taskId);
           continue;
+        } else if (userControl) {
+          await this.stopInputCapture();
+          userControl = false;
         }
 
         this.logger.log(
@@ -241,6 +255,9 @@ export class AgentProcessor {
         error.stack,
       );
     } finally {
+      if (this.inputSocket) {
+        await this.stopInputCapture();
+      }
       this.isProcessing = false;
       this.currentTaskId = null;
     }
@@ -257,6 +274,10 @@ export class AgentProcessor {
       await this.tasksService.update(this.currentTaskId, {
         status: TaskStatus.CANCELLED,
       });
+    }
+
+    if (this.currentTaskId) {
+      await this.stopInputCapture();
     }
 
     this.isProcessing = false;
@@ -739,5 +760,41 @@ export class AgentProcessor {
       console.error('Error in screenshot action:', error);
       throw error;
     }
+  }
+
+  private startInputCapture() {
+    if (this.capturingInput) {
+      return;
+    }
+
+    const baseUrl = this.configService.get<string>('BYTEBOT_DESKTOP_BASE_URL');
+    this.inputSocket = io(baseUrl, {
+      transports: ['websocket'],
+    });
+    this.capturingInput = true;
+    this.inputSocket.on('input_action', async (action: any) => {
+      if (!this.currentTaskId) {
+        return;
+      }
+      await this.messagesService.create({
+        content: [
+          { type: MessageContentType.Text, text: JSON.stringify(action) },
+        ],
+        role: Role.USER,
+        taskId: this.currentTaskId,
+      });
+    });
+  }
+
+  private async stopInputCapture() {
+    if (!this.capturingInput) {
+      return;
+    }
+
+    if (this.inputSocket) {
+      this.inputSocket.disconnect();
+      this.inputSocket = null;
+    }
+    this.capturingInput = false;
   }
 }

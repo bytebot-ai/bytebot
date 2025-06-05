@@ -1,14 +1,17 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { uIOhook } from 'uiohook-napi';
 import {
   Button,
   ComputerAction,
   Coordinates,
 } from '../computer-use/computer-use.service';
+import { InputTrackingGateway } from './input-tracking.gateway';
 
 @Injectable()
-export class InputTrackingService implements OnModuleInit, OnModuleDestroy {
+export class InputTrackingService implements OnModuleDestroy {
   private readonly logger = new Logger(InputTrackingService.name);
+
+  private isTracking = false;
 
   private mouseMovePath: Coordinates[] = [];
   private mouseMoveTimeout: NodeJS.Timeout | null = null;
@@ -16,17 +19,34 @@ export class InputTrackingService implements OnModuleInit, OnModuleDestroy {
   private keyBuffer: string[] = [];
   private keyTimeout: NodeJS.Timeout | null = null;
 
-  onModuleInit() {
+  constructor(private readonly gateway: InputTrackingGateway) {}
+
+  // Tracking is started manually via startTracking
+
+  onModuleDestroy() {
+    this.stopTracking();
+  }
+
+  startTracking() {
+    if (this.isTracking) {
+      return;
+    }
     this.logger.log('Starting input tracking');
     this.registerListeners();
     uIOhook.start();
+    this.isTracking = true;
   }
 
-  onModuleDestroy() {
+  stopTracking() {
+    if (!this.isTracking) {
+      return;
+    }
     this.logger.log('Stopping input tracking');
     this.flushMouseMoves();
     this.flushTyping();
     uIOhook.stop();
+    uIOhook.removeAllListeners();
+    this.isTracking = false;
   }
 
   private registerListeners() {
@@ -35,10 +55,7 @@ export class InputTrackingService implements OnModuleInit, OnModuleDestroy {
       if (this.mouseMoveTimeout) {
         clearTimeout(this.mouseMoveTimeout);
       }
-      this.mouseMoveTimeout = setTimeout(
-        () => this.flushMouseMoves(),
-        100,
-      );
+      this.mouseMoveTimeout = setTimeout(() => this.flushMouseMoves(), 100);
     });
 
     uIOhook.on('mousedown', (e: any) => {
@@ -158,5 +175,6 @@ export class InputTrackingService implements OnModuleInit, OnModuleDestroy {
 
   private logAction(action: ComputerAction) {
     this.logger.log(`Detected action: ${JSON.stringify(action)}`);
+    this.gateway.emitAction(action);
   }
 }

@@ -20,6 +20,7 @@ import {
 } from '@prisma/client';
 import { GuideTaskDto } from './dto/guide-task.dto';
 import { TasksGateway } from './tasks.gateway';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class TasksService {
@@ -29,6 +30,7 @@ export class TasksService {
     readonly prisma: PrismaService,
     @Inject(forwardRef(() => TasksGateway))
     private readonly tasksGateway: TasksGateway,
+    private readonly configService: ConfigService,
   ) {
     this.logger.log('TasksService initialized');
   }
@@ -206,8 +208,8 @@ export class TasksService {
     }
 
     // Allow guiding for NEEDS_HELP status or during takeover
-    const canGuide = task.status === TaskStatus.NEEDS_HELP || 
-                     task.control !== Role.ASSISTANT;
+    const canGuide =
+      task.status === TaskStatus.NEEDS_HELP || task.control !== Role.ASSISTANT;
 
     if (!canGuide) {
       this.logger.warn(
@@ -228,13 +230,28 @@ export class TasksService {
 
     this.tasksGateway.emitNewMessage(taskId, message);
 
+    const wasUserControl = task.control !== Role.ASSISTANT;
+
+    if (wasUserControl) {
+      try {
+        await fetch(
+          `${this.configService.get<string>('BYTEBOT_DESKTOP_BASE_URL')}/input-tracking/stop`,
+          { method: 'POST' },
+        );
+      } catch (error) {
+        this.logger.error('Failed to stop input tracking', error as any);
+      }
+    }
+
     const updateData: any = {};
     if (task.status === TaskStatus.NEEDS_HELP) {
       updateData.status = TaskStatus.RUNNING;
     }
     if (task.control !== Role.ASSISTANT) {
       updateData.control = Role.ASSISTANT;
-      this.logger.log(`Task ${taskId} control automatically resumed after user message`);
+      this.logger.log(
+        `Task ${taskId} control automatically resumed after user message`,
+      );
     }
 
     if (Object.keys(updateData).length > 0) {
@@ -253,15 +270,26 @@ export class TasksService {
     }
 
     if (task.control !== Role.ASSISTANT) {
-      throw new BadRequestException(`Task ${taskId} is not under agent control`);
+      throw new BadRequestException(
+        `Task ${taskId} is not under agent control`,
+      );
     }
 
     const updatedTask = await this.prisma.task.update({
       where: { id: taskId },
-      data: { 
+      data: {
         control: Role.USER,
       },
     });
+
+    try {
+      await fetch(
+        `${this.configService.get<string>('BYTEBOT_DESKTOP_BASE_URL')}/input-tracking/start`,
+        { method: 'POST' },
+      );
+    } catch (error) {
+      this.logger.error('Failed to start input tracking', error as any);
+    }
 
     this.logger.log(`Task ${taskId} takeover initiated`);
     this.tasksGateway.emitTaskUpdate(taskId, updatedTask);
