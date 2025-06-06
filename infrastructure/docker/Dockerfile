@@ -205,15 +205,25 @@ RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC \
 
 # Install dependencies required to build libnut-core
 RUN apt-get update && \
-    apt-get install -y cmake libx11-dev libxtst-dev libxinerama-dev libxi-dev libxrandr-dev git build-essential && \
+    apt-get install -y \
+        cmake \
+        libx11-dev \
+        libxtst-dev \
+        libxinerama-dev \
+        libxi-dev \
+        libxrandr-dev \
+        libxkbcommon-dev \
+        libxkbcommon-x11-dev \
+        git build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 
 COPY ./packages/bytebotd/ /bytebotd/
 WORKDIR /bytebotd
 RUN npm install --build-from-source
+RUN npm rebuild uiohook-napi --build-from-source
 
-RUN npm run build 
+RUN npm run build
 
 WORKDIR /compile
 
