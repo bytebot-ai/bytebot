@@ -47,6 +47,7 @@ model Task {
   status        TaskStatus    @default(PENDING)
   priority      TaskPriority  @default(MEDIUM)
   control       Role          @default(ASSISTANT)
+  model         String        @default("claude-sonnet-4-20250514")
   createdAt     DateTime      @default(now())
   createdBy     Role          @default(USER)
   scheduledFor  DateTime?

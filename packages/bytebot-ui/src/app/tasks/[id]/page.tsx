@@ -207,7 +207,7 @@ export default function TaskPage() {
 
             {/* Fixed chat input */}
             {(taskStatus === TaskStatus.NEEDS_HELP || hasUserControl) && (
-              <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot rounded-2xl border-[0.5px] p-2">
+              <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot rounded-2xl border-[0.5px] p-3">
                 <ChatInput
                   input={input}
                   isLoading={isLoading}
@@ -216,16 +216,6 @@ export default function TaskPage() {
                   minLines={1}
                   placeholder={hasUserControl ? "Send a message to resume agent control..." : ""}
                 />
-                <div className="mt-2">
-                  <Select value="sonnet-4">
-                    <SelectTrigger className="w-auto">
-                      <SelectValue placeholder="Select an model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sonnet-4">Sonnet 4</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
             )}
           </div>

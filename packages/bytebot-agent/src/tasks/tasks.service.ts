@@ -20,6 +20,7 @@ import {
 } from '@prisma/client';
 import { GuideTaskDto } from './dto/guide-task.dto';
 import { TasksGateway } from './tasks.gateway';
+import { DEFAULT_MODEL } from '../common/constants/models';
 
 @Injectable()
 export class TasksService {
@@ -48,6 +49,7 @@ export class TasksService {
           priority: createTaskDto.priority || TaskPriority.MEDIUM,
           status: TaskStatus.PENDING,
           createdBy: createTaskDto.createdBy || Role.USER,
+          model: createTaskDto.model || DEFAULT_MODEL,
           ...(createTaskDto.scheduledFor
             ? { scheduledFor: createTaskDto.scheduledFor }
             : {}),

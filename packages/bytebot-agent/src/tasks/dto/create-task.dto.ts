@@ -21,4 +21,8 @@ export class CreateTaskDto {
   @IsOptional()
   @IsString()
   createdBy?: Role;
+
+  @IsOptional()
+  @IsString()
+  model?: string;
 }

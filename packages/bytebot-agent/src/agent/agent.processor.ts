@@ -89,9 +89,9 @@ export class AgentProcessor {
 
         try {
           const messageContentBlocks: MessageContentBlock[] =
-            await this.anthropicService.sendMessage(messages);
+            await this.anthropicService.sendMessage(messages, task.model);
           this.logger.debug(
-            `Received ${messageContentBlocks.length} content blocks from LLM`,
+            `Received ${messageContentBlocks.length} content blocks from LLM using model ${task.model}`,
           );
 
           if (messageContentBlocks.length == 0) {

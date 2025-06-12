@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { startTask } from "@/utils/taskUtils";
 import { TaskList } from "@/components/tasks/TaskList";
+import { SUPPORTED_MODELS, DEFAULT_MODEL } from "@/constants/models";
 
 // Stock photo component for easy image switching
 interface StockPhotoProps {
@@ -37,6 +38,7 @@ const StockPhoto: React.FC<StockPhotoProps> = ({
 
 export default function Home() {
   const [input, setInput] = useState("");
+  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_MODEL);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const [activePopoverIndex, setActivePopoverIndex] = useState<number | null>(
@@ -82,7 +84,7 @@ export default function Home() {
 
     try {
       // Send request to start a new task
-      const task = await startTask(input);
+      const task = await startTask(input, selectedModel);
 
       if (task && task.id) {
         // Redirect to the task page
@@ -223,7 +225,7 @@ export default function Home() {
                 </p>
               </div>
 
-              <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot w-full rounded-2xl border-[0.5px] p-2">
+              <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot w-full rounded-2xl border-[0.5px] p-3">
                 <ChatInput
                   input={input}
                   isLoading={isLoading}
@@ -231,13 +233,17 @@ export default function Home() {
                   onSend={handleSend}
                   minLines={3}
                 />
-                <div className="mt-2">
-                  <Select defaultValue="sonnet-4">
+                <div className="mt-3">
+                  <Select value={selectedModel} onValueChange={(value) => setSelectedModel(value)}>
                     <SelectTrigger className="w-auto">
                       <SelectValue placeholder="Select a model" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="sonnet-4">Model: Sonnet 4</SelectItem>
+                      {SUPPORTED_MODELS.map((model) => (
+                        <SelectItem key={model.value} value={model.value}>
+                          {model.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -273,7 +279,7 @@ export default function Home() {
                 </p>
               </div>
 
-              <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot w-full rounded-2xl border-[0.5px] p-2">
+              <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot w-full rounded-2xl border-[0.5px] p-3">
                 <ChatInput
                   input={input}
                   isLoading={isLoading}
@@ -281,13 +287,17 @@ export default function Home() {
                   onSend={handleSend}
                   minLines={3}
                 />
-                <div className="mt-2">
-                  <Select defaultValue="sonnet-4">
+                <div className="mt-3">
+                  <Select value={selectedModel} onValueChange={(value) => setSelectedModel(value)}>
                     <SelectTrigger className="w-auto">
                       <SelectValue placeholder="Select a model" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="sonnet-4">Model: Sonnet 4</SelectItem>
+                      {SUPPORTED_MODELS.map((model) => (
+                        <SelectItem key={model.value} value={model.value}>
+                          {model.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
