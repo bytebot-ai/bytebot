@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 9992",
+    "dev": "node server.js",
     "build": "npm run build --prefix ../shared && next build",
-    "start": "next start -p 9992",
+    "start": "NODE_ENV=production node server.js",
     "lint": "next lint"
   },
   "dependencies": {

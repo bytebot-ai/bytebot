@@ -23,7 +23,7 @@ export function VncViewer({ viewOnly = true }: VncViewerProps) {
       {VncComponent && (
         <VncComponent
           key={viewOnly ? 'view-only' : 'interactive'}
-          url={process.env.NEXT_PUBLIC_BYTEBOT_DESKTOP_VNC_URL}
+          url="/websockify"
           scaleViewport
           viewOnly={viewOnly}
           style={{ width: "100%", height: "100%" }}

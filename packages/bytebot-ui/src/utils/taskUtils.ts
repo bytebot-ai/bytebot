@@ -8,7 +8,7 @@ import { Message, Task } from "@/types";
 export async function fetchTaskMessages(taskId: string): Promise<Message[]> {
   try {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL}/tasks/${taskId}/messages`,
+      `/api/tasks/${taskId}/messages`,
       {
         method: "GET",
         headers: {
@@ -37,7 +37,7 @@ export async function fetchTaskMessages(taskId: string): Promise<Message[]> {
 export async function fetchTaskById(taskId: string): Promise<Task | null> {
   try {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL}/tasks/${taskId}`,
+      `/api/tasks/${taskId}`,
       {
         method: "GET",
         headers: {
@@ -66,7 +66,7 @@ export async function fetchTaskById(taskId: string): Promise<Task | null> {
 export async function startTask(message: string): Promise<Task | null> {
   try {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL}/tasks`,
+      `/api/tasks`,
       {
         method: "POST",
         headers: {
@@ -93,7 +93,7 @@ export async function guideTask(
 ): Promise<Task | null> {
   try {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL}/tasks/${taskId}/guide`,
+      `/api/tasks/${taskId}/guide`,
       {
         method: "POST",
         headers: {
@@ -117,7 +117,7 @@ export async function guideTask(
 export async function fetchTasks(): Promise<Task[]> {
   try {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL}/tasks`,
+      `/api/tasks`,
       {
         method: "GET",
         headers: {
@@ -141,7 +141,7 @@ export async function fetchTasks(): Promise<Task[]> {
 export async function takeOverTask(taskId: string): Promise<Task | null> {
   try {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL}/tasks/${taskId}/takeover`,
+      `/api/tasks/${taskId}/takeover`,
       {
         method: "POST",
         headers: {
@@ -164,7 +164,7 @@ export async function takeOverTask(taskId: string): Promise<Task | null> {
 export async function resumeTask(taskId: string): Promise<Task | null> {
   try {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL}/tasks/${taskId}/resume`,
+      `/api/tasks/${taskId}/resume`,
       {
         method: "POST",
         headers: {

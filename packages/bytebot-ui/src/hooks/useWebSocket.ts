@@ -24,7 +24,8 @@ export function useWebSocket({
     }
 
     // Connect to the WebSocket server
-    const socket = io(process.env.NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL, {
+    const socket = io({
+      path: '/socket.io',
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
