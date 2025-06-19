@@ -3,8 +3,16 @@ import Link from "next/link";
 import Image from "next/image";
 import { useTheme } from "next-themes";
 import { HugeiconsIcon } from '@hugeicons/react'
-import { DocumentCodeIcon, TaskDaily01Icon, Home01Icon } from '@hugeicons/core-free-icons'
+import { DocumentCodeIcon, TaskDaily01Icon, Home01Icon, User03Icon, Logout01Icon } from '@hugeicons/core-free-icons'
 import { usePathname } from 'next/navigation';
+import { Button } from "@/components/ui/button";
+import { signOut, useSession } from "@/lib/auth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // Uncommenting interface if needed in the future
 // interface HeaderProps {
@@ -16,6 +24,7 @@ export function Header() {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
+  const { data: session } = useSession();
 
   // After mounting, we can safely show the theme-dependent content
   useEffect(() => {
@@ -76,7 +85,27 @@ export function Header() {
           </Link>
         </div>
       </div>
-      <div className="flex items-center gap-3"></div>
+      <div className="flex items-center gap-3">
+        {session && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="flex items-center gap-2">
+                <HugeiconsIcon icon={User03Icon} className="w-4 h-4" />
+                <span className="text-sm">{session.user.name || session.user.email}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem 
+                onClick={() => signOut()} 
+                className="flex items-center gap-2 text-red-600"
+              >
+                <HugeiconsIcon icon={Logout01Icon} className="w-4 h-4" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
     </header>
   );
 }

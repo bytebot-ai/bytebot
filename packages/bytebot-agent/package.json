@@ -33,6 +33,7 @@
     "@nestjs/schedule": "^6.0.0",
     "@nestjs/websockets": "^11.1.1",
     "@prisma/client": "^6.6.0",
+    "better-auth": "^1.2.9",
     "class-validator": "^0.14.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
