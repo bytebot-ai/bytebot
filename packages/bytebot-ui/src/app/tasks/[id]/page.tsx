@@ -219,6 +219,7 @@ export default function TaskPage() {
             </div>
 
             {/* Fixed chat input */}
+
             {taskStatus === TaskStatus.NEEDS_HELP && (
               <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot rounded-2xl border-[0.5px] p-2">
                 <ChatInput
@@ -228,16 +229,6 @@ export default function TaskPage() {
                   onSend={handleGuideTask}
                   minLines={1}
                 />
-                <div className="mt-2">
-                  <Select value="sonnet-4">
-                    <SelectTrigger className="w-auto">
-                      <SelectValue placeholder="Select an model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sonnet-4">Sonnet 4</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
             )}
           </div>
