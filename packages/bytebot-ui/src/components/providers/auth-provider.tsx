@@ -13,9 +13,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const router = useRouter();
   const pathname = usePathname();
 
+  // Check if auth is enabled
+  const authEnabled = process.env.NEXT_PUBLIC_AUTH_ENABLED === 'true';
   const isPublicRoute = pathname === "/login";
 
   useEffect(() => {
+    // Only run auth logic if auth is enabled
+    if (!authEnabled) return;
+    
     if (!isPending) {
       if (!session && !isPublicRoute) {
         // No session and not on a public route, redirect to login
@@ -25,7 +30,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         router.push("/");
       }
     }
-  }, [session, isPending, isPublicRoute, router]);
+  }, [session, isPending, isPublicRoute, router, authEnabled]);
+
+  // If auth is disabled, just render children without any auth logic
+  if (!authEnabled) {
+    return <>{children}</>;
+  }
 
   // Show loading spinner while checking auth
   if (isPending) {

@@ -11,9 +11,7 @@ async function bootstrap() {
   console.log('Starting bytebot-agent application...');
 
   try {
-    const app = await NestFactory.create(AppModule, {
-      bodyParser: false,
-    });
+    const app = await NestFactory.create(AppModule);
 
     // Set global prefix for all routes
     app.setGlobalPrefix('api');

@@ -247,14 +247,14 @@ Control Bytebot via REST API:
 import requests
 
 # Create a task
-response = requests.post('http://localhost:9991/tasks', json={
+response = requests.post('http://localhost:9992/api/tasks', json={
     'description': 'Search for flights from NYC to London next month',
 })
 
 task_id = response.json()['id']
 
 # Check task status
-status = requests.get(f'http://localhost:9991/tasks/{task_id}')
+status = requests.get(f'http://localhost:9992/api/tasks/{task_id}')
 print(status.json())
 ```
 

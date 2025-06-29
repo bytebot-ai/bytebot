@@ -7,7 +7,7 @@ services:
       context: ../../
       dockerfile: infrastructure/docker/Dockerfile
     # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-desktop:edge
+    # image: ghcr.io/bytebot-ai/bytebot-desktop:edge
     shm_size: "2g"
     container_name: bytebot-desktop
     restart: unless-stopped
@@ -40,7 +40,7 @@ services:
       context: ../../packages/
       dockerfile: bytebot-agent/Dockerfile
     # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-agent:edge
+    # image: ghcr.io/bytebot-ai/bytebot-agent:edge
     container_name: bytebot-agent
     restart: unless-stopped
     ports:
@@ -49,6 +49,7 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/bytebotdb}
       - BYTEBOT_DESKTOP_BASE_URL=${BYTEBOT_DESKTOP_BASE_URL:-http://bytebot-desktop:9990}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AUTH_ENABLED=${AUTH_ENABLED:-false}
     depends_on:
       - postgres
     networks:
@@ -62,7 +63,7 @@ services:
         - BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL:-http://bytebot-agent:9991}
         - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-desktop:9990/websockify}
     # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-ui:edge
+    # image: ghcr.io/bytebot-ai/bytebot-ui:edge
     container_name: bytebot-ui
     restart: unless-stopped
     ports:
@@ -71,6 +72,8 @@ services:
       - NODE_ENV=production
       - BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL:-http://bytebot-agent:9991}
       - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-desktop:9990/websockify}
+      - NEXT_PUBLIC_AUTH_ENABLED=${NEXT_PUBLIC_AUTH_ENABLED:-false}
+      - NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL=${NEXT_PUBLIC_BYTEBOT_AGENT_BASE_URL:-http://localhost:9991}
     depends_on:
       - bytebot-agent
     networks:
