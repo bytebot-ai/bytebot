@@ -36,6 +36,7 @@
     "@thallesp/nestjs-better-auth": "^1.0.0",
     "better-auth": "^1.2.9",
     "class-validator": "^0.14.2",
+    "openai": "^5.8.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
