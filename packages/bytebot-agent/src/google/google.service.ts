@@ -20,13 +20,17 @@ import {
 } from '@google/genai';
 import { v4 as uuid } from 'uuid';
 import { DEFAULT_MODEL } from './google.constants';
+import { LumenService } from '../lumen/lumen.service';
 
 @Injectable()
 export class GoogleService {
   private readonly google: GoogleGenAI;
   private readonly logger = new Logger(GoogleService.name);
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly lumenService: LumenService,
+  ) {
     const apiKey = this.configService.get<string>('GOOGLE_API_KEY');
 
     if (!apiKey) {
@@ -73,6 +77,17 @@ export class GoogleService {
             abortSignal: signal,
           },
         });
+
+      if (response.usageMetadata) {
+        await this.lumenService.sendApiUsageEvent(
+          'google',
+          response.usageMetadata,
+          {
+            model,
+            messageCount: messages.length,
+          },
+        );
+      }
 
       const candidate = response.candidates?.[0];
 
