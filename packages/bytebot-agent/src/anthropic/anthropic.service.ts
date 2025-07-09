@@ -74,6 +74,7 @@ export class AnthropicService {
         },
         { signal },
       );
+      this.logger.debug('Anthropic Response:', JSON.stringify(response.usage, null, 2));
 
       // Convert Anthropic's response to our message content blocks format
       return this.formatAnthropicResponse(response.content);

@@ -57,10 +57,12 @@ export class OpenAIService {
         { signal },
       );
 
+      this.logger.debug('OpenAI Response:', JSON.stringify(response.usage, null, 2));
+
       return this.formatOpenAIResponse(response.output);
     } catch (error: any) {
-      console.log('error', error);
-      console.log('error name', error.name);
+      this.logger.error('OpenAI API error:', error);
+      this.logger.error('Error name:', error.name);
 
       if (error instanceof APIUserAbortError) {
         this.logger.log('OpenAI API call aborted');

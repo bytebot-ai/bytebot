@@ -74,6 +74,11 @@ export class GoogleService {
           },
         });
 
+      // Log usage information
+      if (response.usageMetadata) {
+        this.logger.log(`Google Gemini usage: ${JSON.stringify(response.usageMetadata, null, 2)}`);
+      }
+
       const candidate = response.candidates?.[0];
 
       if (!candidate) {
