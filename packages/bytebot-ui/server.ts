@@ -15,6 +15,7 @@ const port = parseInt(process.env.PORT || "9992", 10);
 // Backend URLs
 const BYTEBOT_AGENT_BASE_URL = process.env.BYTEBOT_AGENT_BASE_URL;
 const BYTEBOT_DESKTOP_VNC_URL = process.env.BYTEBOT_DESKTOP_VNC_URL;
+const BYTEBOT_DESKTOP_WEBRTC_URL = process.env.BYTEBOT_DESKTOP_WEBRTC_URL;
 
 const app = next({ dev, hostname, port });
 
@@ -25,6 +26,7 @@ app
     const nextUpgradeHandler = app.getUpgradeHandler();
 
     const vncProxy = createProxyServer({ changeOrigin: true, ws: true });
+    const webrtcProxy = createProxyServer({ changeOrigin: true, ws: true });
 
     const expressApp = express();
     const server = createServer(expressApp);
@@ -49,6 +51,15 @@ app
         target: `${targetUrl.protocol}//${targetUrl.host}`,
       });
     });
+    expressApp.use(
+      "/api/proxy/neko",
+      createProxyMiddleware({
+        target: BYTEBOT_DESKTOP_WEBRTC_URL,
+        ws: true,
+        changeOrigin: true,
+        pathRewrite: { "^/api/proxy/neko": "/" },
+      }),
+    );
 
     // Handle all other requests with Next.js
     expressApp.all("*", (req, res) => handle(req, res));
@@ -71,6 +82,17 @@ app
           (request.url?.replace(/^\/api\/proxy\/websockify/, "") || "");
         console.log("Proxying websockify upgrade request: ", request.url);
         return vncProxy.ws(request, socket as any, head, {
+          target: `${targetUrl.protocol}//${targetUrl.host}`,
+        });
+      }
+
+      if (pathname.startsWith("/api/proxy/neko")) {
+        const targetUrl = new URL(BYTEBOT_DESKTOP_WEBRTC_URL!);
+        request.url =
+          targetUrl.pathname +
+          (request.url?.replace(/^\/api\/proxy\/neko/, "") || "");
+        console.log("Proxying neko upgrade request: ", request.url);
+        return webrtcProxy.ws(request, socket as any, head, {
           target: `${targetUrl.protocol}//${targetUrl.host}`,
         });
       }

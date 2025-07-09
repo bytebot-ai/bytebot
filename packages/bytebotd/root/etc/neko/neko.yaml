@@ -1,0 +1,12 @@
+desktop:
+  screen: "1280x960@30"
+member:
+  provider: "multiuser"
+  multiuser:
+    admin_password: "admin"
+    user_password: "neko"
+session:
+  merciful_reconnect: true
+  implicit_hosting: false
+  cookie:
+    enabled: false

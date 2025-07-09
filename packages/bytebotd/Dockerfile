@@ -127,13 +127,26 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN pip3 install --upgrade pip
 
 # -----------------------------------------------------------------------------
-# 4. VNC and remote access setup
+# 4. WebRTC remote access setup (Neko)
 # -----------------------------------------------------------------------------
-# Install noVNC and websockify
-RUN git clone https://github.com/novnc/noVNC.git /opt/noVNC \
-    && git clone https://github.com/novnc/websockify.git /opt/websockify \
-    && cd /opt/websockify \
-    && pip3 install --break-system-packages .
+# Install dependencies for Neko WebRTC server
+RUN apt-get update && apt-get install -y \
+    libgtk-3-dev \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libxcvt-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Build and install Neko
+RUN git clone --depth 1 https://github.com/m1k1o/neko.git /opt/neko \
+    && cd /opt/neko/server \
+    && ./build core \
+    && cp bin/neko /usr/local/bin/neko \
+    && cd /opt/neko/client \
+    && npm install \
+    && npm run build \
+    && mkdir -p /var/www/neko \
+    && cp -r dist/* /var/www/neko
 
 # -----------------------------------------------------------------------------
 # 5. Application setup (bytebotd)

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Header } from "@/components/layout/Header";
-import { VncViewer } from "@/components/vnc/VncViewer";
+// display WebRTC stream from Neko
 
 export default function TaskPage() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -84,7 +84,11 @@ export default function TaskPage() {
                     maxWidth: "100%",
                   }}
                 >
-                  <VncViewer viewOnly={false} />
+                  <iframe
+                    src="/api/proxy/neko/"
+                    style={{ width: "100%", height: "100%", border: "none" }}
+                    allow="fullscreen"
+                  />
                 </div>
               </div>
             </div>
