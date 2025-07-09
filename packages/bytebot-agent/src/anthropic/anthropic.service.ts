@@ -14,13 +14,17 @@ import {
   AGENT_SYSTEM_PROMPT,
   BytebotAgentInterrupt,
 } from '../agent/agent.constants';
+import { LumenService } from '../lumen/lumen.service';
 
 @Injectable()
 export class AnthropicService {
   private readonly anthropic: Anthropic;
   private readonly logger = new Logger(AnthropicService.name);
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly lumenService: LumenService,
+  ) {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
 
     if (!apiKey) {
@@ -74,7 +78,12 @@ export class AnthropicService {
         },
         { signal },
       );
-      this.logger.debug('Anthropic Response:', JSON.stringify(response.usage, null, 2));
+
+      // Send usage data to Lumen using the shared service
+      await this.lumenService.sendApiUsageEvent('anthropic', response.usage, {
+        model,
+        messageCount: messages.length,
+      });
 
       // Convert Anthropic's response to our message content blocks format
       return this.formatAnthropicResponse(response.content);

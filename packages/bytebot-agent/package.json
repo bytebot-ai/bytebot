@@ -24,6 +24,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@bytebot/shared": "../shared",
+    "@getlumen/server": "^0.1.2",
     "@google/genai": "^1.8.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",

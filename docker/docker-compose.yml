@@ -51,6 +51,8 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - LUMEN_API_KEY=${LUMEN_API_KEY}
+      - LUMEN_API_URL=${LUMEN_API_URL}
     depends_on:
       - postgres
     networks:

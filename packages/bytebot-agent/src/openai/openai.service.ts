@@ -15,13 +15,17 @@ import {
   AGENT_SYSTEM_PROMPT,
   BytebotAgentInterrupt,
 } from '../agent/agent.constants';
+import { LumenService } from '../lumen/lumen.service';
 
 @Injectable()
 export class OpenAIService {
   private readonly openai: OpenAI;
   private readonly logger = new Logger(OpenAIService.name);
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly lumenService: LumenService,
+  ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
 
     if (!apiKey) {
@@ -57,7 +61,10 @@ export class OpenAIService {
         { signal },
       );
 
-      this.logger.debug('OpenAI Response:', JSON.stringify(response.usage, null, 2));
+      await this.lumenService.sendApiUsageEvent('openai', response.usage, {
+        model,
+        messageCount: messages.length,
+      });
 
       return this.formatOpenAIResponse(response.output);
     } catch (error: any) {
