@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Message, Role, TaskStatus, Task } from "@/types";
+import { Message, Role, TaskStatus, Task, GroupedMessages } from "@/types";
 import {
   guideTask,
   fetchTaskMessages,
+  fetchTaskProcessedMessages,
   fetchTaskById,
   startTask,
   takeOverTask,
@@ -20,6 +21,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
   const [taskStatus, setTaskStatus] = useState<TaskStatus>(TaskStatus.PENDING);
   const [control, setControl] = useState<Role>(Role.ASSISTANT);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [groupedMessages, setGroupedMessages] = useState<GroupedMessages[]>([]);
   const [input, setInput] = useState("");
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(
     initialTaskId || null,
@@ -43,6 +45,21 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
     [currentTaskId],
   );
 
+  // Function to reload grouped messages
+  const reloadGroupedMessages = useCallback(async () => {
+    if (!currentTaskId) return;
+    
+    try {
+      const processedMessages = await fetchTaskProcessedMessages(currentTaskId, {
+        limit: 100, // Get more messages for grouped view
+        page: 1,
+      });
+      setGroupedMessages(processedMessages);
+    } catch (error) {
+      console.error("Error reloading grouped messages:", error);
+    }
+  }, [currentTaskId]);
+
   const handleNewMessage = useCallback(
     (message: Message) => {
       // Only add message if it's not already processed and belongs to current task
@@ -53,9 +70,11 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
         console.log("Adding new message from WebSocket:", message);
         processedMessageIds.current.add(message.id);
         setMessages((prev) => [...prev, message]);
+        // Reload grouped messages to reflect the new message
+        reloadGroupedMessages();
       }
     },
-    [currentTaskId],
+    [currentTaskId, reloadGroupedMessages],
   );
 
   const handleTaskCreated = useCallback((task: Task) => {
@@ -154,9 +173,13 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
           // If we have an initial task ID (from URL), fetch that specific task
           console.log(`Fetching specific task: ${initialTaskId}`);
           const task = await fetchTaskById(initialTaskId);
-          // Load only the first page of messages (most recent 10)
+          // Load raw messages for compatibility and processed messages for chat UI
           const messages = await fetchTaskMessages(initialTaskId, {
             limit: 10,
+            page: 1,
+          });
+          const processedMessages = await fetchTaskProcessedMessages(initialTaskId, {
+            limit: 100, // Get more messages for grouped view
             page: 1,
           });
 
@@ -166,7 +189,10 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
             setTaskStatus(task.status); // Set the task status when loading
             setControl(task.control);
 
-            // If the task has messages, add them to the messages state
+            // Set grouped messages for chat UI
+            setGroupedMessages(processedMessages);
+
+            // If the task has messages, add them to the messages state for compatibility
             if (messages && messages.length > 0) {
               // Process all messages
               const formattedMessages = messages.map((msg: Message) => ({
@@ -357,6 +383,7 @@ export function useChatSession({ initialTaskId }: UseChatSessionProps = {}) {
 
   return {
     messages,
+    groupedMessages,
     taskStatus,
     control,
     input,

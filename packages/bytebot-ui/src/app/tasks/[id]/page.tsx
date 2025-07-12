@@ -17,6 +17,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Role, TaskStatus, Model } from "@/types";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { MoreHorizontalIcon, WavingHand01Icon } from "@hugeicons/core-free-icons";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 export default function TaskPage() {
   const params = useParams();
@@ -30,6 +39,7 @@ export default function TaskPage() {
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const {
     messages,
+    groupedMessages,
     taskStatus,
     control,
     input,
@@ -152,62 +162,49 @@ export default function TaskPage() {
               {/* Status Header */}
               <div className="border-bytebot-bronze-light-5 bg-bytebot-bronze-light-1 flex items-center justify-between rounded-t-lg border-b px-4 py-2">
                 <div className="flex items-center gap-2">
-                  <div
-                    className={`h-2 w-2 rounded-full ${
-                      taskStatus === TaskStatus.COMPLETED
-                        ? "bg-green-500"
-                        : taskStatus === TaskStatus.FAILED
-                          ? "bg-red-500"
-                          : taskStatus === TaskStatus.CANCELLED
-                            ? "bg-gray-500"
-                            : taskStatus === TaskStatus.RUNNING
-                              ? "animate-pulse bg-green-400"
-                              : "bg-yellow-400"
-                    }`}
-                  />
-                  <span className="text-bytebot-bronze-dark-8 text-sm font-medium">
-                    {isTaskInactive
-                      ? `Task ${taskStatus.toLowerCase()} - Screenshot View`
-                      : hasUserControl
-                        ? "User Control - Interactive"
-                        : taskStatus === TaskStatus.RUNNING
-                          ? "Agent Control - Live View"
-                          : `Task ${taskStatus.toLowerCase()} - Live View`}
+                  {taskStatus === TaskStatus.RUNNING && (
+                    <span className="relative flex size-2 ml-1">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia-400 opacity-75"></span>
+                      <span className="relative inline-flex size-2 rounded-full bg-green-700"></span>
+                    </span>
+                  )}
+                  <span className="text-bytebot-bronze-light-12 text-md font-medium">
+                    Virtual Desktop
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   {canTakeOver && (
-                    <button
+                    <Button
                       onClick={handleTakeOverTask}
-                      className="cursor-pointer rounded bg-gray-500 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-600"
+                      variant="default"
+                      size="sm"
+                      icon={<HugeiconsIcon icon={WavingHand01Icon} className="h-5 w-5" />}
                     >
                       Take Over
-                    </button>
+                    </Button>
                   )}
                   {hasUserControl && (
-                    <button
+                    <Button
                       onClick={handleResumeTask}
-                      className="cursor-pointer rounded bg-gray-500 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-600"
+                      variant="default" 
+                      size="sm"
                     >
-                      Resume
-                    </button>
+                      Proceed
+                    </Button>
                   )}
                   {canCancel && (
-                    <button
-                      onClick={handleCancelTask}
-                      className="cursor-pointer rounded bg-red-500 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-red-600"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                  {isTaskInactive && currentScreenshot && (
-                    <span className="text-bytebot-bronze-light-11 bg-bytebot-bronze-light-3 rounded px-2 py-1 text-xs">
-                      Screenshot{" "}
-                      {allScreenshots.findIndex(
-                        (s) => s.id === currentScreenshot.id,
-                      ) + 1}{" "}
-                      of {allScreenshots.length}
-                    </span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="cursor-pointer rounded p-1 hover:bg-gray-100 transition-colors">
+                          <HugeiconsIcon icon={MoreHorizontalIcon} className="h-5 w-5 text-gray-500" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={handleCancelTask} className="text-red-600 focus:bg-red-50">
+                          Cancel
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
               </div>
@@ -239,10 +236,10 @@ export default function TaskPage() {
             className="col-span-3 flex h-full flex-col overflow-scroll"
           >
             {/* Messages scrollable area */}
-            <div className="flex-1 px-4 pt-4 pb-2">
+            <div className="flex-1 px-4 pb-2">
               <ChatContainer
                 taskStatus={taskStatus}
-                messages={messages}
+                groupedMessages={groupedMessages}
                 isLoadingSession={isLoadingSession}
                 isLoadingMoreMessages={isLoadingMoreMessages}
                 hasMoreMessages={hasMoreMessages}

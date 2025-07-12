@@ -87,6 +87,34 @@ export class TasksController {
     return messages;
   }
 
+  @Get(':id/messages/raw')
+  async taskRawMessages(
+    @Param('id') taskId: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+  ): Promise<Message[]> {
+    const options = {
+      limit: limit ? parseInt(limit, 10) : undefined,
+      page: page ? parseInt(page, 10) : undefined,
+    };
+
+    return this.messagesService.findRawMessages(taskId, options);
+  }
+
+  @Get(':id/messages/processed')
+  async taskProcessedMessages(
+    @Param('id') taskId: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+  ) {
+    const options = {
+      limit: limit ? parseInt(limit, 10) : undefined,
+      page: page ? parseInt(page, 10) : undefined,
+    };
+
+    return this.messagesService.findProcessedMessages(taskId, options);
+  }
+
   @Patch(':id')
   async update(
     @Param('id') id: string,

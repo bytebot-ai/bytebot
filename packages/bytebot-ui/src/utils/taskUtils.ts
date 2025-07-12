@@ -1,4 +1,4 @@
-import { Message, Task, Model } from "@/types";
+import { Message, Task, Model, GroupedMessages } from "@/types";
 
 /**
  * Base configuration for API requests
@@ -70,6 +70,42 @@ export async function fetchTaskMessages(
   const queryString = options ? buildQueryString(options) : "";
   const result = await apiRequest<Message[]>(
     `/tasks/${taskId}/messages${queryString}`,
+    { method: "GET" },
+  );
+  return result || [];
+}
+
+/**
+ * Fetches raw messages for a specific task (unprocessed)
+ */
+export async function fetchTaskRawMessages(
+  taskId: string,
+  options?: {
+    limit?: number;
+    page?: number;
+  },
+): Promise<Message[]> {
+  const queryString = options ? buildQueryString(options) : "";
+  const result = await apiRequest<Message[]>(
+    `/tasks/${taskId}/messages/raw${queryString}`,
+    { method: "GET" },
+  );
+  return result || [];
+}
+
+/**
+ * Fetches processed and grouped messages for a specific task (for chat UI)
+ */
+export async function fetchTaskProcessedMessages(
+  taskId: string,
+  options?: {
+    limit?: number;
+    page?: number;
+  },
+): Promise<GroupedMessages[]> {
+  const queryString = options ? buildQueryString(options) : "";
+  const result = await apiRequest<GroupedMessages[]>(
+    `/tasks/${taskId}/messages/processed${queryString}`,
     { method: "GET" },
   );
   return result || [];

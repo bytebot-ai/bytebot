@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import { motion, AnimatePresence } from "motion/react";
 import { Header } from "@/components/layout/Header";
 import { ChatInput } from "@/components/messages/ChatInput";
 import { useRouter } from "next/navigation";
@@ -17,7 +16,6 @@ import { startTask } from "@/utils/taskUtils";
 import { Model } from "@/types";
 import { TaskList } from "@/components/tasks/TaskList";
 
-// Stock photo component for easy image switching
 interface StockPhotoProps {
   src: string;
   alt?: string;
@@ -115,115 +113,6 @@ export default function Home() {
     }
   };
 
-  // Handle popover open state change
-  const handleOpenChange = (isOpen: boolean, index: number) => {
-    setActivePopoverIndex(isOpen ? index : null);
-  };
-
-  // Handle selecting a use case
-  const handleSelectUseCase = (useCase: string) => {
-    setInput(useCase);
-    setActivePopoverIndex(null);
-  };
-
-  // Topic use cases for popovers
-  const topicUseCases = {
-    Research: [
-      "Create a comprehensive report on computer use agents",
-      "Find market trends for my industry",
-      "Analyze competitor strategies",
-    ],
-    Create: [
-      "Draft a blog post about AI trends",
-      "Design a marketing campaign",
-      "Create a content calendar",
-    ],
-    Plan: [
-      "Develop a project timeline",
-      "Create a business strategy",
-      "Plan a product launch",
-    ],
-    Analyze: [
-      "Analyze trending startup keywords on Product Hunt",
-      "Review my website analytics",
-      "Evaluate marketing campaign performance",
-    ],
-    Learn: [
-      "Summarize the top blog posts from Hacker News",
-      "Fetch YouTube videos about AI tools",
-      "Collect insights from Reddit",
-    ],
-  };
-
-  const renderTopicButtons = () => {
-    const topicNames = Object.keys(topicUseCases) as Array<
-      keyof typeof topicUseCases
-    >;
-
-    return (
-      <div
-        className="relative mt-6 flex w-full flex-wrap justify-start gap-1"
-        ref={popoverRef}
-      >
-        {/* Container for buttons */}
-        <div className="flex w-full flex-wrap gap-1" ref={buttonsRef}>
-          {topicNames.map((topic, index) => (
-            <div key={topic} className="relative">
-              <button
-                className={`shadow-bytebot cursor-pointer px-3 py-[5px] text-sm ${activePopoverIndex === index ? "text-bytebot-bronze-light-12" : "text-bytebot-bronze-light-11"} bg-bytebot-bronze-light-3 border-bytebot-bronze-light-a7 hover:bg-bytebot-bronze-light-2 rounded-full border transition-colors`}
-                onClick={() =>
-                  handleOpenChange(activePopoverIndex !== index, index)
-                }
-              >
-                {topic}
-              </button>
-            </div>
-          ))}
-        </div>
-
-        {/* Popover container positioned relative to the parent */}
-        <AnimatePresence>
-          {activePopoverIndex !== null && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{
-                duration: 0.3,
-                ease: [0.4, 0.0, 0.2, 1],
-              }}
-              className="bg-bytebot-bronze-light-3 shadow-bytebot border-bytebot-bronze-light-7 absolute top-full left-0 z-40 mt-1 w-[500px] overflow-hidden rounded-xl border p-1.5"
-            >
-              <div className="max-h-[300px] space-y-1 overflow-y-auto">
-                {topicUseCases[topicNames[activePopoverIndex]].map(
-                  (useCase: string, idx: number) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{
-                        duration: 0.2,
-                        delay: idx * 0.03,
-                        ease: [0.4, 0.0, 0.2, 1],
-                      }}
-                      className="text-bytebot-bronze-light-12 hover:bg-bytebot-bronze-light-2 cursor-pointer rounded-md px-3 py-1.5 text-sm transition-colors"
-                      onClick={() => {
-                        console.log("Clicked use case:", useCase);
-                        handleSelectUseCase(useCase);
-                      }}
-                    >
-                      {useCase}
-                    </motion.div>
-                  ),
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  };
-
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <Header />
@@ -236,14 +125,11 @@ export default function Home() {
             <div className="flex w-full max-w-xl flex-col items-center">
               <div className="mb-6 flex w-full flex-col items-start justify-start">
                 <h1 className="text-bytebot-bronze-light-12 mb-1 text-2xl">
-                  Got something brewing?
+                  What would you like to automate?
                 </h1>
-                <p className="text-bytebot-bronze-light-10 text-2xl">
-                  Let&apos;s dive in!
-                </p>
               </div>
 
-              <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot w-full rounded-2xl border-[0.5px] p-2">
+              <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-7 shadow-bytebot w-full rounded-2xl border-[0.5px] p-2 mb-10">
                 <ChatInput
                   input={input}
                   isLoading={isLoading}
@@ -272,12 +158,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {renderTopicButtons()}
-
-              {/* Task list section */}
-              <div className="border-bytebot-bronze-light-5 mt-8 w-full border-t pt-6">
-                <TaskList title="Latest Tasks" />
-              </div>
+              <TaskList className="w-full" title="Latest Tasks" description="You'll see tasks that are completed, scheduled, or require your attention." />
             </div>
           </div>
 
@@ -295,14 +176,11 @@ export default function Home() {
             <div className="flex w-full max-w-xl flex-col items-center pb-10">
               <div className="mb-6 flex w-full flex-col items-start justify-start">
                 <h1 className="text-bytebot-bronze-light-12 mb-1 text-2xl">
-                  Got something brewing?
+                  What would you like to automate?
                 </h1>
-                <p className="text-bytebot-bronze-light-10 text-2xl">
-                  Let&apos;s dive in!
-                </p>
               </div>
 
-              <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot w-full rounded-2xl border-[0.5px] p-2">
+              <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-5 shadow-bytebot w-full rounded-2xl border-[0.5px] p-2 mb-10">
                 <ChatInput
                   input={input}
                   isLoading={isLoading}
@@ -331,12 +209,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {renderTopicButtons()}
-
-              {/* Task list section */}
-              <div className="border-bytebot-bronze-light-5 mt-8 w-full border-t pt-6">
-                <TaskList title="Latest Tasks" />
-              </div>
+              <TaskList className="w-full" title="Latest Tasks" description="You'll see tasks that are completed, scheduled, or require your attention." />
             </div>
           </div>
         </div>

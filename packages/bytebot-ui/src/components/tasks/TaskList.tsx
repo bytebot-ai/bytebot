@@ -10,14 +10,16 @@ interface TaskListProps {
   limit?: number;
   className?: string;
   title?: string;
-  showTitle?: boolean;
+  description?: string;
+  showHeader?: boolean;
 }
 
 export const TaskList: React.FC<TaskListProps> = ({ 
   limit = 5, 
   className = "", 
   title = "Latest Tasks",
-  showTitle = true
+  description,
+  showHeader = true,
 }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,7 +69,12 @@ export const TaskList: React.FC<TaskListProps> = ({
 
   return (
     <div className={className}>
-      {showTitle && title && <h2 className="text-lg font-medium mb-4">{title}</h2>}
+      {showHeader && (
+        <div className="mb-6 flex flex-col gap-1">
+          <h2 className="text-base font-medium">{title}</h2>
+          <p className="text-sm text-bytebot-bronze-light-11">{description}</p>
+        </div>
+      )}
       
       {isLoading ? (
         <div className="p-4 text-center">
