@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/bytebot-ai-bytebot-badge.png)](https://mseep.ai/app/bytebot-ai-bytebot)
+
 <div align="center">
 
 <img src="static/bytebot-logo.png" width="500" alt="Bytebot Logo">
