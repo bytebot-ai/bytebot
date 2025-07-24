@@ -168,7 +168,7 @@ export default function TaskPage() {
             {/* Messages scrollable area */}
             <div
               ref={chatContainerRef}
-              className="min-h-0 flex-1 overflow-scroll px-4"
+              className="min-h-0 flex-1 overflow-scroll px-4 hide-scrollbar"
             >
               <ChatContainer
                 taskStatus={taskStatus}
