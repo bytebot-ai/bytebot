@@ -1,0 +1,51 @@
+bytebotDesktop:
+  image:
+    repository: ghcr.io/bytebot-ai/bytebot-desktop
+    tag: edge
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 9990
+  env:
+    DISPLAY: ":0"
+postgres:
+  image:
+    repository: postgres
+    tag: 16-alpine
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 5432
+  env:
+    POSTGRES_PASSWORD: postgres
+    POSTGRES_USER: postgres
+    POSTGRES_DB: bytebotdb
+  persistence:
+    enabled: true
+    storage: 1Gi
+bytebotAgent:
+  image:
+    repository: ghcr.io/bytebot-ai/bytebot-agent
+    tag: edge
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 9991
+  env:
+    DATABASE_URL: postgresql://postgres:postgres@bytebot-postgres:5432/bytebotdb
+    BYTEBOT_DESKTOP_BASE_URL: http://bytebot-desktop:9990
+    ANTHROPIC_API_KEY: ""
+    OPENAI_API_KEY: ""
+    GOOGLE_API_KEY: ""
+bytebotUI:
+  image:
+    repository: ghcr.io/bytebot-ai/bytebot-ui
+    tag: edge
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 9992
+  env:
+    NODE_ENV: production
+    BYTEBOT_AGENT_BASE_URL: http://bytebot-agent:9991
+    BYTEBOT_DESKTOP_VNC_URL: http://bytebot-desktop:9990/websockify

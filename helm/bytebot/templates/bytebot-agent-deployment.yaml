@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bytebot-agent
+  labels:
+    app: bytebot-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bytebot-agent
+  template:
+    metadata:
+      labels:
+        app: bytebot-agent
+    spec:
+      containers:
+        - name: bytebot-agent
+          image: "{{ .Values.bytebotAgent.image.repository }}:{{ .Values.bytebotAgent.image.tag }}"
+          imagePullPolicy: {{ .Values.bytebotAgent.image.pullPolicy }}
+          env:
+            - name: DATABASE_URL
+              value: "{{ .Values.bytebotAgent.env.DATABASE_URL }}"
+            - name: BYTEBOT_DESKTOP_BASE_URL
+              value: "{{ .Values.bytebotAgent.env.BYTEBOT_DESKTOP_BASE_URL }}"
+            - name: ANTHROPIC_API_KEY
+              value: "{{ .Values.bytebotAgent.env.ANTHROPIC_API_KEY }}"
+            - name: OPENAI_API_KEY
+              value: "{{ .Values.bytebotAgent.env.OPENAI_API_KEY }}"
+            - name: GOOGLE_API_KEY
+              value: "{{ .Values.bytebotAgent.env.GOOGLE_API_KEY }}"
+          ports:
+            - containerPort: 9991

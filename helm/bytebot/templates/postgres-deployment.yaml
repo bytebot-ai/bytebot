@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bytebot-postgres
+  labels:
+    app: bytebot-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bytebot-postgres
+  template:
+    metadata:
+      labels:
+        app: bytebot-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          env:
+            - name: POSTGRES_PASSWORD
+              value: "{{ .Values.postgres.env.POSTGRES_PASSWORD }}"
+            - name: POSTGRES_USER
+              value: "{{ .Values.postgres.env.POSTGRES_USER }}"
+            - name: POSTGRES_DB
+              value: "{{ .Values.postgres.env.POSTGRES_DB }}"
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data

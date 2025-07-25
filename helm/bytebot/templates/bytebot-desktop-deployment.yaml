@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bytebot-desktop
+  labels:
+    app: bytebot-desktop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bytebot-desktop
+  template:
+    metadata:
+      labels:
+        app: bytebot-desktop
+    spec:
+      hostname: computer
+      containers:
+        - name: bytebot-desktop
+          image: "{{ .Values.bytebotDesktop.image.repository }}:{{ .Values.bytebotDesktop.image.tag }}"
+          imagePullPolicy: {{ .Values.bytebotDesktop.image.pullPolicy }}
+          env:
+            - name: DISPLAY
+              value: "{{ .Values.bytebotDesktop.env.DISPLAY }}"
+          ports:
+            - containerPort: 9990
+          securityContext:
+            privileged: true

@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bytebot-ui
+  labels:
+    app: bytebot-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bytebot-ui
+  template:
+    metadata:
+      labels:
+        app: bytebot-ui
+    spec:
+      containers:
+        - name: bytebot-ui
+          image: "{{ .Values.bytebotUI.image.repository }}:{{ .Values.bytebotUI.image.tag }}"
+          imagePullPolicy: {{ .Values.bytebotUI.image.pullPolicy }}
+          env:
+            - name: NODE_ENV
+              value: "{{ .Values.bytebotUI.env.NODE_ENV }}"
+            - name: BYTEBOT_AGENT_BASE_URL
+              value: "{{ .Values.bytebotUI.env.BYTEBOT_AGENT_BASE_URL }}"
+            - name: BYTEBOT_DESKTOP_VNC_URL
+              value: "{{ .Values.bytebotUI.env.BYTEBOT_DESKTOP_VNC_URL }}"
+          ports:
+            - containerPort: 9992

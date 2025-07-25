@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bytebot-agent
+spec:
+  type: {{ .Values.bytebotAgent.service.type }}
+  selector:
+    app: bytebot-agent
+  ports:
+    - port: {{ .Values.bytebotAgent.service.port }}
+      targetPort: 9991
+      name: http

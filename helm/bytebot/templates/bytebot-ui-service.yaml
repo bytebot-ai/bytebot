@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bytebot-ui
+spec:
+  type: {{ .Values.bytebotUI.service.type }}
+  selector:
+    app: bytebot-ui
+  ports:
+    - port: {{ .Values.bytebotUI.service.port }}
+      targetPort: 9992
+      name: http

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bytebot-postgres
+spec:
+  type: {{ .Values.postgres.service.type }}
+  selector:
+    app: bytebot-postgres
+  ports:
+    - port: {{ .Values.postgres.service.port }}
+      targetPort: 5432
+      name: postgres
