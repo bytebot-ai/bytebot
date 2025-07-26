@@ -1,21 +1,29 @@
 import React from "react";
-import { GroupedMessages } from "@/types";
+import { GroupedMessages, TaskStatus } from "@/types";
 import { MessageAvatar } from "./MessageAvatar";
 import { MessageContent } from "./content/MessageContent";
 import { isToolResultContentBlock, isImageContentBlock } from "@bytebot/shared";
 import Image from "next/image";
+import { cn } from "@/lib/utils";
 
 interface AssistantMessageProps {
   group: GroupedMessages;
+  taskStatus: TaskStatus;
   messageIdToIndex: Record<string, number>;
 }
 
 export function AssistantMessage({
   group,
+  taskStatus,
   messageIdToIndex,
 }: AssistantMessageProps) {
   return (
-    <div className="bg-bytebot-bronze-light-3 flex items-start justify-start gap-2 px-4 py-3">
+    <div className={
+      cn(
+        "bg-bytebot-bronze-light-3 flex items-start justify-start gap-2 px-4 py-3 border-x border-bytebot-bronze-light-7",
+        ![TaskStatus.RUNNING, TaskStatus.NEEDS_HELP].includes(taskStatus) && "border-b border-bytebot-bronze-light-7 rounded-b-lg"
+      )}
+    >
       <MessageAvatar role={group.role} />
 
       {group.take_over ? (

@@ -37,7 +37,6 @@ export enum TaskStatus {
   COMPLETED = "COMPLETED",
   CANCELLED = "CANCELLED",
   FAILED = "FAILED",
-  SCHEDULED = "SCHEDULED",
 }
 
 export enum TaskPriority {

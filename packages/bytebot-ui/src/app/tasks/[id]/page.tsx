@@ -4,7 +4,6 @@ import React, { useEffect, useRef } from "react";
 import { Header } from "@/components/layout/Header";
 import { ChatContainer } from "@/components/messages/ChatContainer";
 import { DesktopContainer } from "@/components/ui/desktop-container";
-import { ChatInput } from "@/components/messages/ChatInput";
 import { useChatSession } from "@/hooks/useChatSession";
 import { useScrollScreenshot } from "@/hooks/useScrollScreenshot";
 import { useParams, useRouter } from "next/navigation";
@@ -31,17 +30,8 @@ export default function TaskPage() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const {
     messages,
-    groupedMessages,
     taskStatus,
     control,
-    input,
-    setInput,
-    isLoading,
-    isLoadingSession,
-    isLoadingMoreMessages,
-    hasMoreMessages,
-    loadMoreMessages,
-    handleAddMessage,
     handleTakeOverTask,
     handleResumeTask,
     handleCancelTask,
@@ -171,34 +161,11 @@ export default function TaskPage() {
               className="min-h-0 flex-1 overflow-scroll px-4"
             >
               <ChatContainer
-                taskStatus={taskStatus}
-                groupedMessages={groupedMessages}
-                isLoadingSession={isLoadingSession}
-                isLoadingMoreMessages={isLoadingMoreMessages}
-                hasMoreMessages={hasMoreMessages}
-                loadMoreMessages={loadMoreMessages}
                 scrollRef={chatContainerRef}
-                control={control}
                 messageIdToIndex={messageIdToIndex}
+                taskId={taskId}
               />
             </div>
-
-            {/* Fixed chat input */}
-            {[TaskStatus.RUNNING, TaskStatus.NEEDS_HELP].includes(
-              taskStatus,
-            ) && (
-              <div className="flex-shrink-0 px-4 pb-4">
-                <div className="bg-bytebot-bronze-light-2 border-bytebot-bronze-light-7 shadow-rounded-2xl border p-2">
-                  <ChatInput
-                    input={input}
-                    isLoading={isLoading}
-                    onInputChange={setInput}
-                    onSend={handleAddMessage}
-                    minLines={1}
-                  />
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </main>

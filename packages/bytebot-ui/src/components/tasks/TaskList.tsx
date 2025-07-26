@@ -55,8 +55,8 @@ export const TaskList: React.FC<TaskListProps> = ({
     const loadTasks = async () => {
       setIsLoading(true);
       try {
-        const fetchedTasks = await fetchTasks();
-        setTasks(fetchedTasks.slice(0, limit));
+        const result = await fetchTasks({ limit });
+        setTasks(result.tasks);
       } catch (error) {
         console.error("Failed to load tasks:", error);
       } finally {

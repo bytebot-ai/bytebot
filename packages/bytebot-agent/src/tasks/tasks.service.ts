@@ -156,28 +156,40 @@ export class TasksService {
     return task;
   }
 
-  async findAll(): Promise<Task[]> {
-    this.logger.log('Retrieving all tasks');
-
-    const tasks = await this.prisma.task.findMany({
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+  async findAll(page = 1, limit = 10, statuses?: string[]): Promise<{ tasks: Task[]; total: number; totalPages: number }> {
+    this.logger.log(`Retrieving tasks - page: ${page}, limit: ${limit}, statuses: ${statuses?.join(',')}`);
+    
+    const skip = (page - 1) * limit;
+    
+    const whereClause: Prisma.TaskWhereInput = statuses && statuses.length > 0 
+      ? { status: { in: statuses as TaskStatus[] } } 
+      : {};
+    
+    const [tasks, total] = await Promise.all([
+      this.prisma.task.findMany({
+        where: whereClause,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: 10,
-    });
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take: limit,
+      }),
+      this.prisma.task.count({ where: whereClause }),
+    ]);
+    
+    const totalPages = Math.ceil(total / limit);
+    this.logger.debug(`Retrieved ${tasks.length} tasks out of ${total} total`);
 
-    this.logger.debug(`Retrieved ${tasks.length} tasks`);
-
-    return tasks;
+    return { tasks, total, totalPages };
   }
 
   async findById(id: string): Promise<Task> {

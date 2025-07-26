@@ -50,10 +50,6 @@ const STATUS_CONFIGS: Record<TaskStatus, StatusIconConfig> = {
     icon: CancelCircleIcon,
     color: "text-bytebot-bronze-light-10",
   },
-  [TaskStatus.SCHEDULED]: {
-    icon: TimeScheduleIcon,
-    color: "text-bytebot-bronze-light-10",
-  },
 };
 
 export const TaskItem: React.FC<TaskItemProps> = ({ task }) => {

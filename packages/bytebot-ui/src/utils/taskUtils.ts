@@ -1,4 +1,4 @@
-import { Message, Task, Model, GroupedMessages, FileWithBase64 } from "@/types";
+import { Message, Task, Model, GroupedMessages, FileWithBase64, TaskStatus } from "@/types";
 
 /**
  * Base configuration for API requests
@@ -146,11 +146,78 @@ export async function addMessage(
 }
 
 /**
- * Fetches all tasks
+ * Fetches all tasks with optional pagination and filtering
  */
-export async function fetchTasks(): Promise<Task[]> {
-  const result = await apiRequest<Task[]>("/tasks", { method: "GET" });
-  return result || [];
+export async function fetchTasks(options?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  statuses?: string[];
+}): Promise<{ tasks: Task[]; total: number; totalPages: number }> {
+  const params: Record<string, string | number> = {};
+  
+  if (options?.page) params.page = options.page;
+  if (options?.limit) params.limit = options.limit;
+  if (options?.status) params.status = options.status;
+  if (options?.statuses && options.statuses.length > 0) {
+    params.statuses = options.statuses.join(',');
+  }
+  
+  const queryString = Object.keys(params).length > 0 ? buildQueryString(params) : "";
+  const result = await apiRequest<{ tasks: Task[]; total: number; totalPages: number }>(
+    `/tasks${queryString}`,
+    { method: "GET" }
+  );
+  return result || { tasks: [], total: 0, totalPages: 0 };
+}
+
+/**
+ * Fetches task counts for grouped tabs
+ */
+export async function fetchTaskCounts(): Promise<Record<string, number>> {
+  try {
+    const allTasksResult = await fetchTasks();
+    
+    // Define the status groups
+    const statusGroups = {
+      ALL: Object.values(TaskStatus),
+      ACTIVE: [TaskStatus.PENDING, TaskStatus.RUNNING, TaskStatus.NEEDS_HELP, TaskStatus.NEEDS_REVIEW],
+      COMPLETED: [TaskStatus.COMPLETED],
+      CANCELLED_FAILED: [TaskStatus.CANCELLED, TaskStatus.FAILED],
+    };
+
+    const counts: Record<string, number> = {
+      ALL: allTasksResult.total,
+      ACTIVE: 0,
+      COMPLETED: 0,
+      CANCELLED_FAILED: 0,
+    };
+
+    // Fetch counts for each group
+    const groupPromises = Object.entries(statusGroups).map(async ([groupKey, statuses]) => {
+      if (groupKey === 'ALL') {
+        return { groupKey, count: allTasksResult.total };
+      }
+      
+      const result = await fetchTasks({ statuses, limit: 1 });
+      return { groupKey, count: result.total };
+    });
+
+    const groupCounts = await Promise.all(groupPromises);
+    groupCounts.forEach(({ groupKey, count }) => {
+      counts[groupKey] = count;
+    });
+
+    return counts;
+  } catch (error) {
+    console.error("Failed to fetch task counts:", error);
+    return {
+      ALL: 0,
+      ACTIVE: 0,
+      COMPLETED: 0,
+      CANCELLED_FAILED: 0,
+    };
+  }
 }
 
 export async function fetchModels(): Promise<Model[]> {
