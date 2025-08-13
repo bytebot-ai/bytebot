@@ -50,7 +50,7 @@ services:
       - BYTEBOT_DESKTOP_BASE_URL=${BYTEBOT_DESKTOP_BASE_URL:-http://bytebot-desktop:9990}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY=${AIzaSyDNVvq2q7i0b2xmQ52f4FoeE8IKzV-Ph18}
     depends_on:
       - postgres
     networks:
