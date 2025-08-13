@@ -82,6 +82,7 @@ export const _clickMouseTool = {
       clickCount: {
         type: 'integer' as const,
         description: 'Number of clicks to perform (e.g., 2 for double-click)',
+        default: 1,
       },
     },
     required: ['button', 'clickCount'],
@@ -318,13 +319,13 @@ export const _setTaskStatusTool = {
     properties: {
       status: {
         type: 'string' as const,
-        enum: ['completed', 'failed', 'needs_help'],
+        enum: ['completed', 'needs_help'],
         description: 'The status of the task',
       },
       description: {
         type: 'string' as const,
         description:
-          'If the task is completed, a summary of the task. If the task is failed, a description of the failure.',
+          'If the task is completed, a summary of the task. If the task needs help, a description of the issue or clarification needed.',
       },
     },
     required: ['status', 'description'],

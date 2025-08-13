@@ -39,25 +39,39 @@ export default function TaskPage() {
   } = useChatSession({ initialTaskId: taskId });
 
   // Determine if task is inactive (show screenshot) or active (show VNC)
-  const isTaskInactive =
-    taskStatus === TaskStatus.COMPLETED ||
-    taskStatus === TaskStatus.FAILED ||
-    taskStatus === TaskStatus.CANCELLED;
+  function isTaskInactive(): boolean {
+    return (
+      taskStatus === TaskStatus.COMPLETED ||
+      taskStatus === TaskStatus.FAILED ||
+      taskStatus === TaskStatus.CANCELLED
+    );
+  }
 
   // Determine if user can take control
-  const canTakeOver =
-    control === Role.ASSISTANT && taskStatus === TaskStatus.RUNNING;
+  function canTakeOver(): boolean {
+    return control === Role.ASSISTANT && taskStatus === TaskStatus.RUNNING;
+  }
 
   // Determine if user has control or is in takeover mode
-  const hasUserControl =
-    control === Role.USER && taskStatus === TaskStatus.RUNNING;
+  function hasUserControl(): boolean {
+    return (
+      control === Role.USER &&
+      (taskStatus === TaskStatus.RUNNING ||
+        taskStatus === TaskStatus.NEEDS_HELP)
+    );
+  }
 
   // Determine if task can be cancelled
-  const canCancel =
-    taskStatus === TaskStatus.RUNNING || taskStatus === TaskStatus.NEEDS_HELP;
+  function canCancel(): boolean {
+    return (
+      taskStatus === TaskStatus.RUNNING || taskStatus === TaskStatus.NEEDS_HELP
+    );
+  }
 
   // Determine VNC mode - interactive when user has control, view-only otherwise
-  const vncViewOnly = !hasUserControl;
+  function vncViewOnly(): boolean {
+    return !hasUserControl;
+  }
 
   // Use scroll screenshot hook for inactive tasks
   const { currentScreenshot } = useScrollScreenshot({
@@ -90,8 +104,8 @@ export default function TaskPage() {
           {/* Main container */}
           <div className="col-span-4">
             <DesktopContainer
-              screenshot={isTaskInactive ? currentScreenshot : null}
-              viewOnly={vncViewOnly}
+              screenshot={isTaskInactive() ? currentScreenshot : null}
+              viewOnly={vncViewOnly()}
               status={
                 (() => {
                   if (
@@ -110,7 +124,7 @@ export default function TaskPage() {
                 })() as VirtualDesktopStatus
               }
             >
-              {canTakeOver && (
+              {canTakeOver() && (
                 <Button
                   onClick={handleTakeOverTask}
                   variant="default"
@@ -125,12 +139,12 @@ export default function TaskPage() {
                   Take Over
                 </Button>
               )}
-              {hasUserControl && (
+              {hasUserControl() && (
                 <Button onClick={handleResumeTask} variant="default" size="sm">
                   Proceed
                 </Button>
               )}
-              {canCancel && (
+              {canCancel() && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="icon">
@@ -158,7 +172,7 @@ export default function TaskPage() {
             {/* Messages scrollable area */}
             <div
               ref={chatContainerRef}
-              className="min-h-0 flex-1 overflow-scroll px-4 hide-scrollbar"
+              className="hide-scrollbar min-h-0 flex-1 overflow-scroll px-4"
             >
               <ChatContainer
                 scrollRef={chatContainerRef}

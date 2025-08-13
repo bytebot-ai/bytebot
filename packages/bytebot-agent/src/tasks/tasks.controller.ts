@@ -183,14 +183,6 @@ export class TasksController {
     return this.messagesService.findProcessedMessages(taskId, options);
   }
 
-  @Patch(':id')
-  async update(
-    @Param('id') id: string,
-    @Body() updateTaskDto: UpdateTaskDto,
-  ): Promise<Task> {
-    return this.tasksService.update(id, updateTaskDto);
-  }
-
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string): Promise<void> {

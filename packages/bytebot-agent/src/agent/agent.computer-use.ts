@@ -303,7 +303,7 @@ async function clickMouse(input: {
         action: 'click_mouse',
         coordinates,
         button,
-        holdKeys,
+        holdKeys: holdKeys && holdKeys.length > 0 ? holdKeys : undefined,
         clickCount,
       }),
     });
@@ -358,7 +358,7 @@ async function dragMouse(input: {
         action: 'drag_mouse',
         path,
         button,
-        holdKeys,
+        holdKeys: holdKeys && holdKeys.length > 0 ? holdKeys : undefined,
       }),
     });
   } catch (error) {
@@ -387,7 +387,7 @@ async function scroll(input: {
         coordinates,
         direction,
         scrollCount,
-        holdKeys,
+        holdKeys: holdKeys && holdKeys.length > 0 ? holdKeys : undefined,
       }),
     });
   } catch (error) {

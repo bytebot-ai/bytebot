@@ -355,25 +355,6 @@ export class AgentProcessor {
               },
             ],
           });
-
-          switch (block.input.status) {
-            case 'completed':
-              await this.tasksService.update(taskId, {
-                status: TaskStatus.COMPLETED,
-                completedAt: new Date(),
-              });
-              break;
-            case 'failed':
-              await this.tasksService.update(taskId, {
-                status: TaskStatus.FAILED,
-              });
-              break;
-            case 'needs_help':
-              await this.tasksService.update(taskId, {
-                status: TaskStatus.NEEDS_HELP,
-              });
-              break;
-          }
         }
       }
 
@@ -392,11 +373,6 @@ export class AgentProcessor {
             await this.tasksService.update(taskId, {
               status: TaskStatus.COMPLETED,
               completedAt: new Date(),
-            });
-            break;
-          case 'failed':
-            await this.tasksService.update(taskId, {
-              status: TaskStatus.FAILED,
             });
             break;
           case 'needs_help':

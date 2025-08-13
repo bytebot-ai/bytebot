@@ -242,13 +242,15 @@ export class TasksService {
       throw new NotFoundException(`Task with ID ${id} not found`);
     }
 
-    const updatedTask = await this.prisma.task.update({
+    let updatedTask = await this.prisma.task.update({
       where: { id },
       data: updateTaskDto,
     });
 
     if (updateTaskDto.status === TaskStatus.COMPLETED) {
       this.eventEmitter.emit('task.completed', { taskId: id });
+    } else if (updateTaskDto.status === TaskStatus.NEEDS_HELP) {
+      updatedTask = await this.takeOver(id);
     } else if (updateTaskDto.status === TaskStatus.FAILED) {
       this.eventEmitter.emit('task.failed', { taskId: id });
     }
@@ -291,15 +293,6 @@ export class TasksService {
     });
 
     this.tasksGateway.emitNewMessage(taskId, message);
-
-    if (task.status === TaskStatus.NEEDS_HELP) {
-      await this.prisma.task.update({
-        where: { id: taskId },
-        data: {
-          status: TaskStatus.RUNNING,
-        },
-      });
-    }
     return task;
   }
 
@@ -319,6 +312,7 @@ export class TasksService {
       where: { id: taskId },
       data: {
         control: Role.ASSISTANT,
+        status: TaskStatus.RUNNING,
       },
     });
 
