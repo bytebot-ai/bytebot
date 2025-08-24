@@ -23,6 +23,7 @@ export const DesktopContainer: React.FC<DesktopContainerProps> = ({
   status = "running",
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const vncContainerRef = useRef<HTMLDivElement>(null); // Ref for the VNC container
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [isMounted, setIsMounted] = useState(false);
 
@@ -50,11 +51,11 @@ export const DesktopContainer: React.FC<DesktopContainerProps> = ({
       const aspectRatio = 1280 / 960;
 
       if (parentWidth / parentHeight > aspectRatio) {
-        // Width is the limiting factor
+        // Height is the limiting factor
         height = parentHeight;
         width = height * aspectRatio;
       } else {
-        // Height is the limiting factor
+        // Width is the limiting factor
         width = parentWidth;
         height = width / aspectRatio;
       }
@@ -71,6 +72,16 @@ export const DesktopContainer: React.FC<DesktopContainerProps> = ({
     return () => window.removeEventListener("resize", updateSize);
   }, [isMounted]);
 
+  const handleFullScreen = () => {
+    if (vncContainerRef.current) {
+      vncContainerRef.current.requestFullscreen().catch((err) => {
+        console.error(
+          `Error attempting to enable full-screen mode: ${err.message} (${err.name})`
+        );
+      });
+    }
+  };
+
   return (
     <div
       className={`border-bytebot-bronze-light-7 flex w-full flex-col rounded-t-lg border-t border-r border-l ${className}`}
@@ -83,11 +94,20 @@ export const DesktopContainer: React.FC<DesktopContainerProps> = ({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2">{children}</div>
+        <div className="flex items-center gap-2">
+          {children}
+          <button
+            onClick={handleFullScreen}
+            className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded"
+          >
+            Fullscreen
+          </button>
+        </div>
       </div>
 
       <div ref={containerRef} className="flex aspect-[4/3] overflow-hidden">
         <div
+          ref={vncContainerRef} // Attach the ref here
           style={{
             width: `${containerSize.width}px`,
             height: `${containerSize.height}px`,
