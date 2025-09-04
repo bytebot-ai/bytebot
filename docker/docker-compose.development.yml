@@ -1,0 +1,48 @@
+## docker-compose file that spins up a bytebot-desktop container
+## and a postgres container. bytebot-ui and bytebot-agent are not included
+## in this file, and can be run separately using npm, allowing for
+## easier local development.
+
+name: bytebot
+
+services:
+  bytebot-desktop:
+    # Build from source
+    build:
+      context: ../packages/
+      dockerfile: bytebotd/Dockerfile
+    # Use pre-built image
+    image: ghcr.io/bytebot-ai/bytebot-desktop:edge
+    shm_size: "2g"
+    container_name: bytebot-desktop
+    restart: unless-stopped
+    hostname: computer
+    privileged: true
+    ports:
+      - "9990:9990" # bytebotd service & noVNC
+    environment:
+      - DISPLAY=:0
+    networks:
+      - bytebot-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: bytebot-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=bytebotdb
+    networks:
+      - bytebot-network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+networks:
+  bytebot-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

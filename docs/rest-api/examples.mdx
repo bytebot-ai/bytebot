@@ -1,0 +1,582 @@
+---
+title: "Usage Examples"
+description: "Code examples for common automation scenarios using the Bytebot REST API"
+---
+
+This page provides practical examples of how to use the Bytebot REST API in different programming languages and scenarios.
+
+## Language Examples
+
+### cURL Examples
+
+<CodeGroup>
+```bash Open Application and Navigate
+# Open an application (like Firefox)
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "move_mouse", "coordinates": {"x": 100, "y": 950}}'
+
+curl -X POST http://localhost:9990/computer-use \
+ -H "Content-Type: application/json" \
+ -d '{"action": "click_mouse", "button": "left", "clickCount": 2}'
+
+# Wait for application to open
+
+curl -X POST http://localhost:9990/computer-use \
+ -H "Content-Type: application/json" \
+ -d '{"action": "wait", "duration": 150}'
+
+# Type URL in address bar
+
+curl -X POST http://localhost:9990/computer-use \
+ -H "Content-Type: application/json" \
+ -d '{"action": "type_text", "text": "https://example.com"}'
+
+# Press Enter to navigate
+
+curl -X POST http://localhost:9990/computer-use \
+ -H "Content-Type: application/json" \
+ -d '{"action": "typ_keys", "keys": ["enter"]}'
+
+````
+
+```bash Take and Save Screenshot
+# Take a screenshot
+response=$(curl -s -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "screenshot"}')
+
+# Extract the base64 image data and save to a file
+echo $response | jq -r '.data.image' | base64 -d > screenshot.png
+echo "Screenshot saved to screenshot.png"
+````
+
+```bash Copy and Paste Text
+# Select text with triple click (selects a paragraph)
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "move_mouse", "coordinates": {"x": 400, "y": 300}}'
+
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "click_mouse", "button": "left", "clickCount": 3}'
+
+# Copy with Ctrl+C
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "press_keys", "keys": ["ctrl", "c"], "press": "down"}'
+
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "press_keys", "keys": ["ctrl", "c"], "press": "up"}'
+
+# Click elsewhere to paste
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "move_mouse", "coordinates": {"x": 400, "y": 500}}'
+
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "click_mouse", "button": "left"}'
+
+# Paste with Ctrl+V
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "press_keys", "keys": ["ctrl", "v"], "press": "down"}'
+
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "press_keys", "keys": ["ctrl", "v"], "press": "up"}'
+```
+
+</CodeGroup>
+
+### Python Examples
+
+<CodeGroup>
+```python Web Form Automation
+import requests
+import time
+
+def control_computer(action, **params):
+url = "http://localhost:9990/computer-use"
+data = {"action": action, **params}
+response = requests.post(url, json=data)
+return response.json()
+
+def fill_web_form(): # Navigate to a form (e.g., login form)
+control_computer("move_mouse", coordinates={"x": 500, "y": 300})
+control_computer("click_mouse", button="left")
+
+    # Type username
+    control_computer("type_text", text="user@example.com")
+
+    # Tab to password field
+    control_computer("type_keys", keys=["tab"])
+
+    # Type password
+    control_computer("type_text", text="secure_password")
+
+    # Tab to login button
+    control_computer("type_keys", keys=["tab"])
+
+    # Press Enter to submit
+    control_computer("type_keys", keys=["enter"])
+
+    # Wait for page to load
+    control_computer("wait", duration=2000)
+
+    print("Form submitted successfully")
+
+# Run the automation
+
+# fill_web_form()
+
+````
+
+```python File Upload Dialog
+import requests
+import time
+
+def control_computer(action, **params):
+    url = "http://localhost:9990/computer-use"
+    data = {"action": action, **params}
+    response = requests.post(url, json=data)
+    return response.json()
+
+def upload_file(file_path="/path/to/file.txt"):
+    # Click the upload button
+    control_computer("move_mouse", coordinates={"x": 400, "y": 300})
+    control_computer("click_mouse", button="left")
+
+    # Wait for file dialog to appear
+    control_computer("wait", duration=1000)
+
+    # Type the file path
+    control_computer("type_text", text=file_path)
+
+    # Press Enter to confirm
+    control_computer("press_keys", keys=["enter"], press="down")
+    control_computer("press_keys", keys=["enter"], press="up")
+
+    # Wait for upload to complete
+    control_computer("wait", duration=3000)
+
+    # Take screenshot of result
+    result = control_computer("screenshot")
+    if result["success"]:
+        print("File upload completed and screenshot taken")
+
+# Run the automation
+# upload_file("/Users/username/Documents/example.pdf")
+````
+
+```python Screenshot Monitoring
+import requests
+import base64
+import time
+from io import BytesIO
+from PIL import Image
+
+def take_screenshot():
+    url = "http://localhost:9990/computer-use"
+    response = requests.post(url, json={"action": "screenshot"})
+    if response.json()["success"]:
+        img_data = base64.b64decode(response.json()["data"]["image"])
+        return Image.open(BytesIO(img_data))
+    return None
+
+def monitor_for_changes(interval=5, duration=60):
+    """Monitor the screen for changes at regular intervals"""
+    first_screenshot = take_screenshot()
+    if not first_screenshot:
+        print("Failed to take initial screenshot")
+        return
+
+    first_screenshot.save("baseline.png")
+    print("Baseline screenshot saved")
+
+    end_time = time.time() + duration
+    screenshot_count = 1
+
+    while time.time() < end_time:
+        time.sleep(interval)
+
+        current = take_screenshot()
+        if current:
+            filename = f"screenshot_{screenshot_count}.png"
+            current.save(filename)
+            print(f"Saved {filename}")
+            screenshot_count += 1
+
+    print(f"Monitoring completed. Saved {screenshot_count} screenshots.")
+
+# Run the monitoring for 30 seconds, taking a screenshot every 5 seconds
+# monitor_for_changes(interval=5, duration=30)
+```
+
+</CodeGroup>
+
+### JavaScript/Node.js Examples
+
+<CodeGroup>
+```javascript Browser Navigation
+const axios = require('axios');
+
+async function controlComputer(action, params = {}) {
+const url = "http://localhost:9990/computer-use";
+const data = { action, ...params };
+
+try {
+const response = await axios.post(url, data);
+return response.data;
+} catch (error) {
+console.error('Error:', error.message);
+throw error;
+}
+}
+
+async function navigateToWebsite(url) {
+console.log(`Navigating to ${url}...`);
+
+// Open Firefox/Chrome by clicking on dock icon
+await controlComputer("move_mouse", { coordinates: { x: 100, y: 950 } });
+await controlComputer("click_mouse", { button: "left" });
+
+// Wait for browser to open
+await controlComputer("wait", { duration: 2000 });
+
+// Click in URL bar (usually near the top)
+await controlComputer("move_mouse", { coordinates: { x: 400, y: 60 } });
+await controlComputer("click_mouse", { button: "left" });
+
+// Select all existing text (Cmd+A on Mac, Ctrl+A elsewhere)
+await controlComputer("press_keys", { keys: ["ctrl"], press: "down" });
+await controlComputer("press_keys", { keys: ["a"], press: "down" });
+await controlComputer("press_keys", { keys: ["a"], press: "up" });
+await controlComputer("press_keys", { keys: ["ctrl"], press: "up" });
+
+// Type the URL
+await controlComputer("type_text", { text: url });
+
+// Press Enter to navigate
+await controlComputer("press_keys", { keys: ["enter"], press: "down" });
+await controlComputer("press_keys", { keys: ["enter"], press: "up" });
+
+// Wait for page to load
+await controlComputer("wait", { duration: 3000 });
+
+console.log("Navigation completed");
+}
+
+// Usage
+// navigateToWebsite("https://example.com").catch(console.error);
+
+````
+
+```javascript Data Entry Automation
+const axios = require('axios');
+
+async function controlComputer(action, params = {}) {
+  const url = "http://localhost:9990/computer-use";
+  const data = { action, ...params };
+
+  try {
+    const response = await axios.post(url, data);
+    return response.data;
+  } catch (error) {
+    console.error('Error:', error.message);
+    throw error;
+  }
+}
+
+// Function to fill a data entry form
+async function fillDataEntryForm(formData) {
+  // Click on the first form field
+  await controlComputer("move_mouse", { coordinates: { x: 400, y: 250 } });
+  await controlComputer("click_mouse", { button: "left" });
+
+  // Fill each field and press Tab to move to the next
+  for (const [index, value] of formData.entries()) {
+    // Type the value
+    await controlComputer("type_text", { text: value });
+
+    // If not the last field, press Tab to move to next field
+    if (index < formData.length - 1) {
+      await controlComputer("press_keys", { keys: ["tab"], press: "down" });
+      await controlComputer("press_keys", { keys: ["tab"], press: "up" });
+      await controlComputer("wait", { duration: 300 });
+    }
+  }
+
+  // Find and click the submit button
+  await controlComputer("move_mouse", { coordinates: { x: 400, y: 500 } });
+  await controlComputer("click_mouse", { button: "left" });
+
+  // Take a screenshot of the result
+  const result = await controlComputer("screenshot");
+  console.log("Form submitted successfully");
+
+  return result;
+}
+
+// Example form data
+const formFields = [
+  "John Doe",              // Name
+  "john.doe@example.com",  // Email
+  "123 Main St",           // Address
+  "555-123-4567"           // Phone
+];
+
+// Usage
+// fillDataEntryForm(formFields).catch(console.error);
+````
+
+```javascript UI Testing
+const axios = require("axios");
+const fs = require("fs");
+
+async function controlComputer(action, params = {}) {
+  const url = "http://localhost:9990/computer-use";
+  const data = { action, ...params };
+
+  try {
+    const response = await axios.post(url, data);
+    return response.data;
+  } catch (error) {
+    console.error("Error:", error.message);
+    throw error;
+  }
+}
+
+// Simple UI testing framework
+async function testUIElement(name, options) {
+  const { x, y, expectedResult } = options;
+
+  console.log(`Testing UI element: ${name}`);
+
+  // Take screenshot before interaction
+  const beforeShot = await controlComputer("screenshot");
+  fs.writeFileSync(
+    `before_${name}.png`,
+    Buffer.from(beforeShot.data.image, "base64")
+  );
+
+  // Click the element
+  await controlComputer("move_mouse", { coordinates: { x, y } });
+  await controlComputer("click_mouse", { button: "left" });
+
+  // Wait for any UI changes
+  await controlComputer("wait", { duration: 1000 });
+
+  // Take screenshot after interaction
+  const afterShot = await controlComputer("screenshot");
+  fs.writeFileSync(
+    `after_${name}.png`,
+    Buffer.from(afterShot.data.image, "base64")
+  );
+
+  console.log(`Test for ${name} completed. Screenshots saved.`);
+
+  if (expectedResult && typeof expectedResult === "function") {
+    // Call custom verification function if provided
+    await expectedResult();
+  }
+}
+
+// Example UI elements to test
+const uiElements = [
+  { name: "login_button", x: 500, y: 400 },
+  { name: "menu_icon", x: 50, y: 50 },
+  { name: "close_dialog", x: 800, y: 200 },
+];
+
+// Run tests sequentially
+async function runUITests() {
+  for (const element of uiElements) {
+    await testUIElement(element.name, element);
+    // Add some delay between tests
+    await controlComputer("wait", { duration: 2000 });
+  }
+  console.log("All UI tests completed");
+}
+
+// Usage
+// runUITests().catch(console.error);
+```
+
+</CodeGroup>
+
+### Common Automation Scenarios
+
+### Browser Automation Workflow
+
+This example demonstrates a complete browser workflow, opening a site and interacting with it:
+
+```python
+import requests
+import time
+
+def control_computer(action, **params):
+    url = "http://localhost:9990/computer-use"
+    data = {"action": action, **params}
+    response = requests.post(url, json=data)
+    return response.json()
+
+def browser_workflow():
+    # Open browser (assuming browser icon is at position x=100, y=960)
+    control_computer("move_mouse", coordinates={"x": 100, "y": 960})
+    control_computer("click_mouse", button="left")
+    time.sleep(3)  # Wait for browser to open
+
+    # Type URL and navigate
+    control_computer("type_text", text="https://example.com")
+    control_computer("press_keys", key="enter")
+    time.sleep(2)  # Wait for page to load
+
+    # Take screenshot of the loaded page
+    screenshot = control_computer("screenshot")
+
+    # Click on a link (coordinates would need to be adjusted for your target)
+    control_computer("move_mouse", coordinates={"x": 300, "y": 400})
+    control_computer("click_mouse", button="left")
+    time.sleep(2)
+
+    # Scroll down
+    control_computer("scroll", direction="down", amount=500)
+
+    # Fill a search box
+    control_computer("move_mouse", coordinates={"x": 600, "y": 200})
+    control_computer("click_mouse", button="left")
+    control_computer("type_text", text="search query")
+    control_computer("press_keys", key="enter")
+
+browser_workflow()
+```
+
+### Form Filling Workflow
+
+This example shows a complete form-filling process:
+
+```javascript
+const axios = require("axios");
+
+async function controlComputer(action, params = {}) {
+  const url = "http://localhost:9990/computer-use";
+  const data = { action, ...params };
+  const response = await axios.post(url, data);
+  return response.data;
+}
+
+async function fillForm() {
+  // Navigate to form page
+  await controlComputer("move_mouse", { coordinates: { x: 100, y: 960 } });
+  await controlComputer("click_mouse", { button: "left" });
+  await controlComputer("wait", { duration: 3000 });
+  await controlComputer("type_text", { text: "https://example.com/form" });
+  await controlComputer("press_keys", { key: "enter" });
+  await controlComputer("wait", { duration: 2000 });
+
+  // Fill form
+  // Name field
+  await controlComputer("move_mouse", { coordinates: { x: 400, y: 250 } });
+  await controlComputer("click_mouse", { button: "left" });
+
+  // Type the value
+  await controlComputer("type_text", { text: "John Doe" });
+
+  // Email field (tab to next field)
+  await controlComputer("press_keys", { keys: ["tab"], press: "down" });
+  await controlComputer("press_keys", { keys: ["tab"], press: "up" });
+  await controlComputer("type_text", { text: "john@example.com" });
+
+  // Message field (tab to next field)
+  await controlComputer("press_keys", { keys: ["tab"], press: "down" });
+  await controlComputer("press_keys", { keys: ["tab"], press: "up" });
+  await controlComputer("type_text", {
+    text: "This is an automated message sent using Bytebot's Computer Use API",
+    delay: 30,
+  });
+
+  // Submit form
+  await controlComputer("press_keys", { keys: ["tab"], press: "down" });
+  await controlComputer("press_keys", { keys: ["tab"], press: "up" });
+  await controlComputer("press_keys", { key: "enter" });
+
+  // Take screenshot of confirmation page
+  await controlComputer("wait", { duration: 2000 });
+  const screenshot = await controlComputer("screenshot");
+
+  console.log("Form submitted successfully");
+}
+
+fillForm().catch(console.error);
+```
+
+### Automation Framework Integration
+
+You can create a reusable automation framework with Bytebot:
+
+```python
+import requests
+import time
+import json
+
+class BytebotDriver:
+    """A Selenium-like driver for Bytebot"""
+
+    def __init__(self, base_url="http://localhost:9990"):
+        self.base_url = base_url
+
+    def control_computer(self, action, **params):
+        url = f"{self.base_url}/computer-use"
+        data = {"action": action, **params}
+        response = requests.post(url, json=data)
+        return response.json()
+
+    def open_browser(self, browser_icon_coords):
+        """Open a browser by clicking its icon"""
+        self.control_computer("move_mouse", coordinates=browser_icon_coords)
+        self.control_computer("click_mouse", button="left")
+        time.sleep(3)  # Wait for browser to open
+
+    def navigate_to(self, url):
+        """Navigate to a URL in the browser"""
+        self.control_computer("type_text", text=url)
+        self.control_computer("press_keys", key="enter")
+        time.sleep(2)  # Wait for page to load
+
+    def click_element(self, coords):
+        """Click an element at the specified coordinates"""
+        self.control_computer("move_mouse", coordinates=coords)
+        self.control_computer("click_mouse", button="left")
+
+    def type_text(self, text):
+        """Type text at the current cursor position"""
+        self.control_computer("type_text", text=text)
+
+    def press_key(self, key, modifiers=None):
+        """Press a keyboard key with optional modifiers"""
+        params = {"key": key}
+        if modifiers:
+            params["modifiers"] = modifiers
+        self.control_computer("press_keys", **params)
+
+    def take_screenshot(self):
+        """Take a screenshot of the desktop"""
+        return self.control_computer("screenshot")
+
+    def scroll(self, direction, amount):
+        """Scroll in the specified direction"""
+        self.control_computer("scroll", direction=direction, amount=amount)
+
+# Example usage
+driver = BytebotDriver()
+driver.open_browser({"x": 100, "y": 960})
+driver.navigate_to("https://example.com")
+driver.click_element({"x": 300, "y": 400})
+driver.type_text("Hello Bytebot!")
+driver.press_key("enter")
+result = driver.take_screenshot()
+print(f"Screenshot captured: {result['success']}")
+```

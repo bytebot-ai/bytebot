@@ -1,0 +1,546 @@
+---
+title: "Unified Computer Actions API"
+description: "Control all aspects of the desktop environment with a single endpoint"
+---
+
+## Overview
+
+The unified computer action API allows for granular control over all aspects of the Bytebot virtual desktop environment through a single endpoint. It replaces multiple specific endpoints with a unified interface that handles various computer actions like mouse movements, clicks, key presses, and more.
+
+## Endpoint
+
+| Method | URL              | Description                                     |
+| ------ | ---------------- | ----------------------------------------------- |
+| POST   | `/computer-use`  | Execute computer actions in the virtual desktop |
+
+## Request Format
+
+All requests to the unified endpoint follow this format:
+
+```json
+{
+  "action": "action_name",
+  ...action-specific parameters
+}
+```
+
+The `action` parameter determines which operation to perform, and the remaining parameters depend on the specific action.
+
+## Available Actions
+
+### move_mouse
+
+Move the mouse cursor to a specific position.
+
+**Parameters:**
+
+| Parameter       | Type   | Required | Description                       |
+| --------------- | ------ | -------- | --------------------------------- |
+| `coordinates`   | Object | Yes      | The target coordinates to move to |
+| `coordinates.x` | Number | Yes      | X coordinate                      |
+| `coordinates.y` | Number | Yes      | Y coordinate                      |
+
+**Example:**
+
+```json
+{
+  "action": "move_mouse",
+  "coordinates": {
+    "x": 100,
+    "y": 200
+  }
+}
+```
+
+### trace_mouse
+
+Move the mouse along a path of coordinates.
+
+**Parameters:**
+
+| Parameter    | Type   | Required | Description                                     |
+| ------------ | ------ | -------- | ----------------------------------------------- |
+| `path`       | Array  | Yes      | Array of coordinate objects for the mouse path  |
+| `path[].x`   | Number | Yes      | X coordinate for each point in the path         |
+| `path[].y`   | Number | Yes      | Y coordinate for each point in the path         |
+| `holdKeys`   | Array  | No       | Keys to hold while moving along the path        |
+
+**Example:**
+
+```json
+{
+  "action": "trace_mouse",
+  "path": [
+    { "x": 100, "y": 100 },
+    { "x": 150, "y": 150 },
+    { "x": 200, "y": 200 }
+  ],
+  "holdKeys": ["shift"]
+}
+```
+
+### click_mouse
+
+Perform a mouse click at the current or specified position.
+
+**Parameters:**
+
+| Parameter       | Type   | Required | Description                                           |
+| --------------- | ------ | -------- | ----------------------------------------------------- |
+| `coordinates`   | Object | No       | The coordinates to click (uses current if omitted)    |
+| `coordinates.x` | Number | Yes*     | X coordinate                                          |
+| `coordinates.y` | Number | Yes*     | Y coordinate                                          |
+| `button`        | String | Yes      | Mouse button: 'left', 'right', or 'middle'            |
+| `clickCount`    | Number | Yes      | Number of clicks to perform                            |
+| `holdKeys`      | Array  | No       | Keys to hold while clicking (e.g., ['ctrl', 'shift']) |
+
+**Example:**
+
+```json
+{
+  "action": "click_mouse",
+  "coordinates": {
+    "x": 150,
+    "y": 250
+  },
+  "button": "left",
+  "clickCount": 2
+}
+```
+
+### press_mouse
+
+Press or release a mouse button at the current or specified position.
+
+**Parameters:**
+
+| Parameter       | Type   | Required | Description                                              |
+| --------------- | ------ | -------- | -------------------------------------------------------- |
+| `coordinates`   | Object | No       | The coordinates to press/release (uses current if omitted) |
+| `coordinates.x` | Number | Yes*     | X coordinate                                             |
+| `coordinates.y` | Number | Yes*     | Y coordinate                                             |
+| `button`        | String | Yes      | Mouse button: 'left', 'right', or 'middle'               |
+| `press`         | String | Yes      | Action: 'up' or 'down'                                   |
+
+**Example:**
+
+```json
+{
+  "action": "press_mouse",
+  "coordinates": {
+    "x": 150,
+    "y": 250
+  },
+  "button": "left",
+  "press": "down"
+}
+```
+
+### drag_mouse
+
+Click and drag the mouse from one point to another.
+
+**Parameters:**
+
+| Parameter    | Type   | Required | Description                                   |
+| ------------ | ------ | -------- | --------------------------------------------- |
+| `path`       | Array  | Yes      | Array of coordinate objects for the drag path |
+| `path[].x`   | Number | Yes      | X coordinate for each point in the path       |
+| `path[].y`   | Number | Yes      | Y coordinate for each point in the path       |
+| `button`     | String | Yes      | Mouse button: 'left', 'right', or 'middle'    |
+| `holdKeys`   | Array  | No       | Keys to hold while dragging                   |
+
+**Example:**
+
+```json
+{
+  "action": "drag_mouse",
+  "path": [
+    { "x": 100, "y": 100 },
+    { "x": 200, "y": 200 }
+  ],
+  "button": "left"
+}
+```
+
+### scroll
+
+Scroll up, down, left, or right.
+
+**Parameters:**
+
+| Parameter       | Type   | Required | Description                                            |
+| --------------- | ------ | -------- | ------------------------------------------------------ |
+| `coordinates`   | Object | No       | The coordinates to scroll at (uses current if omitted) |
+| `coordinates.x` | Number | Yes*     | X coordinate                                           |
+| `coordinates.y` | Number | Yes*     | Y coordinate                                           |
+| `direction`     | String | Yes      | Scroll direction: 'up', 'down', 'left', 'right'        |
+| `scrollCount`   | Number | Yes      | Number of scroll steps                                 |
+| `holdKeys`      | Array  | No       | Keys to hold while scrolling                           |
+
+**Example:**
+
+```json
+{
+  "action": "scroll",
+  "direction": "down",
+  "scrollCount": 5
+}
+```
+
+### type_keys
+
+Type a sequence of keyboard keys.
+
+**Parameters:**
+
+| Parameter | Type   | Required | Description                            |
+| --------- | ------ | -------- | -------------------------------------- |
+| `keys`    | Array  | Yes      | Array of keys to type in sequence      |
+| `delay`   | Number | No       | Delay between key presses (ms)         |
+
+**Example:**
+
+```json
+{
+  "action": "type_keys",
+  "keys": ["a", "b", "c", "enter"],
+  "delay": 50
+}
+```
+
+### press_keys
+
+Press or release keyboard keys.
+
+**Parameters:**
+
+| Parameter | Type   | Required | Description                                |
+| --------- | ------ | -------- | ------------------------------------------ |
+| `keys`    | Array  | Yes      | Array of keys to press or release          |
+| `press`   | String | Yes      | Action: 'up' or 'down'                     |
+
+**Example:**
+
+```json
+{
+  "action": "press_keys",
+  "keys": ["ctrl", "shift", "esc"],
+  "press": "down"
+}
+```
+
+### type_text
+
+Type a text string with optional delay.
+
+**Parameters:**
+
+| Parameter | Type   | Required | Description                                           |
+| --------- | ------ | -------- | ----------------------------------------------------- |
+| `text`    | String | Yes      | The text to type                                      |
+| `delay`   | Number | No       | Delay between characters in milliseconds (default: 0) |
+
+**Example:**
+
+```json
+{
+  "action": "type_text",
+  "text": "Hello, Bytebot!",
+  "delay": 50
+}
+```
+
+### paste_text
+
+Paste text to the current cursor position. This is especially useful for special characters that aren't on the standard keyboard.
+
+**Parameters:**
+
+| Parameter | Type   | Required | Description                                                              |
+| --------- | ------ | -------- | ------------------------------------------------------------------------ |
+| `text`    | String | Yes      | The text to paste, including special characters and emojis               |
+
+**Example:**
+
+```json
+{
+  "action": "paste_text",
+  "text": "Special characters: ©®™€¥£ émojis 🎉"
+}
+```
+
+### wait
+
+Wait for a specified duration.
+
+**Parameters:**
+
+| Parameter  | Type   | Required | Description                   |
+| ---------- | ------ | -------- | ----------------------------- |
+| `duration` | Number | Yes      | Wait duration in milliseconds |
+
+**Example:**
+
+```json
+{
+  "action": "wait",
+  "duration": 2000
+}
+```
+
+### screenshot
+
+Capture a screenshot of the desktop.
+
+**Parameters:** None required
+
+**Example:**
+
+```json
+{
+  "action": "screenshot"
+}
+```
+
+### cursor_position
+
+Get the current position of the mouse cursor.
+
+**Parameters:** None required
+
+**Example:**
+
+```json
+{
+  "action": "cursor_position"
+}
+```
+
+### application
+
+Switch between different applications or navigate to the desktop/directory.
+
+**Parameters:**
+
+| Parameter     | Type   | Required | Description                                                              |
+| ------------- | ------ | -------- | ------------------------------------------------------------------------ |
+| `application` | String | Yes      | The application to switch to. See available options below.               |
+
+**Available Applications:**
+- `firefox` - Mozilla Firefox web browser
+- `1password` - Password manager
+- `thunderbird` - Email client
+- `vscode` - Visual Studio Code editor
+- `terminal` - Terminal/console application
+- `desktop` - Switch to desktop
+- `directory` - File manager/directory browser
+
+**Example:**
+
+```json
+{
+  "action": "application",
+  "application": "firefox"
+}
+```
+
+### write_file
+
+Write a file to the desktop environment filesystem.
+
+**Parameters:**
+
+| Parameter | Type   | Required | Description                                                    |
+| --------- | ------ | -------- | -------------------------------------------------------------- |
+| `path`    | String | Yes      | File path (absolute or relative to /home/user/Desktop)        |
+| `data`    | String | Yes      | Base64 encoded file content                                    |
+
+**Example:**
+
+```json
+{
+  "action": "write_file",
+  "path": "/home/user/documents/example.txt",
+  "data": "SGVsbG8gV29ybGQh"
+}
+```
+
+### read_file
+
+Read a file from the desktop environment filesystem.
+
+**Parameters:**
+
+| Parameter | Type   | Required | Description                                                    |
+| --------- | ------ | -------- | -------------------------------------------------------------- |
+| `path`    | String | Yes      | File path (absolute or relative to /home/user/Desktop)        |
+
+**Example:**
+
+```json
+{
+  "action": "read_file",
+  "path": "/home/user/documents/example.txt"
+}
+```
+
+## Response Format
+
+The response format varies depending on the action performed.
+
+### Standard Response
+
+Most actions return a simple success response:
+
+```json
+{
+  "success": true
+}
+```
+
+### Screenshot Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "image": "base64_encoded_image_data"
+  }
+}
+```
+
+### Cursor Position Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "x": 123,
+    "y": 456
+  }
+}
+```
+
+### Write File Response
+
+```json
+{
+  "success": true,
+  "message": "File written successfully to: /home/user/documents/example.txt"
+}
+```
+
+### Read File Response
+
+```json
+{
+  "success": true,
+  "data": "SGVsbG8gV29ybGQh",
+  "name": "example.txt",
+  "size": 12,
+  "mediaType": "text/plain"
+}
+```
+
+### Error Response
+
+```json
+{
+  "success": false,
+  "error": "Error message"
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js Example
+
+```javascript
+const axios = require('axios');
+
+const bytebot = {
+  baseUrl: 'http://localhost:9990/computer-use/computer',
+  
+  async action(params) {
+    try {
+      const response = await axios.post(this.baseUrl, params);
+      return response.data;
+    } catch (error) {
+      console.error('Error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+  
+  // Convenience methods
+  async moveMouse(x, y) {
+    return this.action({
+      action: 'move_mouse',
+      coordinates: { x, y }
+    });
+  },
+  
+  async clickMouse(x, y, button = 'left') {
+    return this.action({
+      action: 'click_mouse',
+      coordinates: { x, y },
+      button
+    });
+  },
+  
+  async typeText(text) {
+    return this.action({
+      action: 'type_text',
+      text
+    });
+  },
+  
+  async pasteText(text) {
+    return this.action({
+      action: 'paste_text',
+      text
+    });
+  },
+  
+  async switchApplication(application) {
+    return this.action({
+      action: 'application',
+      application
+    });
+  },
+  
+  async screenshot() {
+    return this.action({ action: 'screenshot' });
+  }
+};
+
+// Example usage:
+async function example() {
+  // Switch to Firefox
+  await bytebot.switchApplication('firefox');
+  
+  // Navigate to a website
+  await bytebot.moveMouse(100, 35);
+  await bytebot.clickMouse(100, 35);
+  await bytebot.typeText('https://example.com');
+  await bytebot.action({
+    action: 'press_keys',
+    keys: ['enter'],
+    press: 'down'
+  });
+  
+  // Wait for page to load
+  await bytebot.action({
+    action: 'wait',
+    duration: 2000
+  });
+  
+  // Paste some special characters
+  await bytebot.pasteText('© 2025 Example Corp™ - €100');
+  
+  // Take a screenshot
+  const result = await bytebot.screenshot();
+  console.log('Screenshot taken!');
+}
+
+example().catch(console.error);

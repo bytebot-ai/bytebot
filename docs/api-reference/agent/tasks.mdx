@@ -1,0 +1,310 @@
+---
+title: 'Tasks API'
+description: 'Reference documentation for the Bytebot Agent Tasks API'
+---
+
+## Tasks API
+
+The Tasks API allows you to manage tasks in the Bytebot agent system. It's available at `http://localhost:9991/tasks` when running the full agent setup.
+
+## Task Model
+
+```typescript
+{
+  id: string;
+  description: string; 
+  status: 'PENDING' | 'IN_PROGRESS' | 'NEEDS_HELP' | 'NEEDS_REVIEW' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  createdAt: string; 
+  updatedAt: string; 
+}
+```
+
+## Endpoints
+
+### Create Task
+
+Create a new task for the agent to process.
+
+<Card title="POST /tasks" icon="plus">
+  Create a new task
+</Card>
+
+#### Request Body
+
+```json
+{
+  "description": "This is a description of the task",
+  "priority": "MEDIUM" // Optional: LOW, MEDIUM, HIGH, URGENT
+}
+```
+
+#### With File Upload
+
+To upload files with a task, use `multipart/form-data`:
+
+```bash
+curl -X POST http://localhost:9991/tasks \
+  -F "description=Analyze the uploaded contracts and extract key terms" \
+  -F "priority=HIGH" \
+  -F "files=@contract1.pdf" \
+  -F "files=@contract2.pdf"
+```
+
+Uploaded files are automatically saved to the desktop and can be referenced in the task description.
+
+#### Response
+
+```json
+{
+  "id": "task-123",
+  "description": "This is a description of the task",
+  "status": "PENDING",
+  "priority": "MEDIUM",
+  "createdAt": "2025-04-14T12:00:00Z",
+  "updatedAt": "2025-04-14T12:00:00Z"
+}
+```
+
+### Get All Tasks
+
+Retrieve a list of all tasks.
+
+<Card title="GET /tasks" icon="list">
+  Get all tasks
+</Card>
+
+#### Response
+
+```json
+[
+  {
+    "id": "task-123",
+    "description": "This is a description of the task",
+    "status": "PENDING",
+    "priority": "MEDIUM",
+    "createdAt": "2025-04-14T12:00:00Z",
+    "updatedAt": "2025-04-14T12:00:00Z"
+  },
+  // ...more tasks
+]
+```
+
+### Get In-Progress Task
+
+Retrieve the currently in-progress task, if any.
+
+<Card title="GET /tasks/in-progress" icon="play">
+  Get the currently in-progress task
+</Card>
+
+#### Response
+
+```json
+{
+  "id": "task-123",
+  "description": "This is a description of the task",
+  "status": "IN_PROGRESS",
+  "priority": "MEDIUM",
+  "createdAt": "2025-04-14T12:00:00Z",
+  "updatedAt": "2025-04-14T12:00:00Z"
+}
+```
+
+If no task is in progress, the response will be `null`.
+
+### Get Task by ID
+
+Retrieve a specific task by its ID.
+
+<Card title="GET /tasks/:id" icon="magnifying-glass">
+  Get a task by ID
+</Card>
+
+#### Response
+
+```json
+{
+  "id": "task-123",
+  "description": "This is a description of the task",
+  "status": "PENDING",
+  "priority": "MEDIUM",
+  "createdAt": "2025-04-14T12:00:00Z",
+  "updatedAt": "2025-04-14T12:00:00Z",
+  "messages": [
+    {
+      "id": "msg-456",
+      "content": [
+        {
+          "type": "text",
+          "text": "This is a message"
+        }
+      ],
+      "role": "USER",
+      "taskId": "task-123",
+      "createdAt": "2025-04-14T12:05:00Z",
+      "updatedAt": "2025-04-14T12:05:00Z"
+    }
+    // ...more messages
+  ]
+}
+```
+
+### Update Task
+
+Update an existing task.
+
+<Card title="PATCH /tasks/:id" icon="pen">
+  Update a task
+</Card>
+
+#### Request Body
+
+```json
+{
+  "status": "COMPLETED", 
+  "priority": "HIGH" 
+}
+```
+
+#### Response
+
+```json
+{
+  "id": "task-123",
+  "description": "This is a description of the task",
+  "status": "COMPLETED",
+  "priority": "HIGH",
+  "createdAt": "2025-04-14T12:00:00Z",
+  "updatedAt": "2025-04-14T12:01:00Z"
+}
+```
+
+### Delete Task
+
+Delete a task.
+
+<Card title="DELETE /tasks/:id" icon="trash">
+  Delete a task
+</Card>
+
+#### Response
+
+Status code `204 No Content` with an empty response body.
+
+## Message Content Structure
+
+Messages in the Bytebot agent system use a content block structure compatible with Anthropic's Claude API:
+
+```typescript
+type MessageContent = MessageContentBlock[];
+
+interface MessageContentBlock {
+  type: string;  
+  [key: string]: any;  
+}
+
+interface TextContentBlock {
+  type: "text";
+  text: string;
+}
+
+interface ImageContentBlock {
+  type: "image";
+  source: {
+    type: "base64";
+    media_type: string;  
+    data: string;  
+  };
+}
+```
+
+## Error Responses
+
+The API may return the following error responses:
+
+| Status Code | Description                                |
+|-------------|--------------------------------------------|
+| `400`       | Bad Request - Invalid parameters           |
+| `404`       | Not Found - Resource does not exist        |
+| `500`       | Internal Server Error - Server side error  |
+
+Example error response:
+
+```json
+{
+  "statusCode": 404,
+  "message": "Task with ID task-123 not found",
+  "error": "Not Found"
+}
+```
+
+## Code Examples
+
+<CodeGroup>
+```javascript JavaScript
+const axios = require('axios');
+
+async function createTask(description) {
+  const response = await axios.post('http://localhost:9991/tasks', {
+    description
+  });
+  return response.data;
+}
+
+async function findInProgressTask() {
+  const response = await axios.get('http://localhost:9991/tasks/in-progress');
+  return response.data;
+}
+
+// Example usage
+async function main() {
+  // Create a new task
+  const task = await createTask('Compare React, Vue, and Angular for a new project');
+  console.log('Created task:', task);
+  
+  // Get current in-progress task
+  const inProgressTask = await findInProgressTask();
+  console.log('In progress task:', inProgressTask);
+}
+```
+
+```python Python
+import requests
+
+def create_task(description):
+    response = requests.post(
+        "http://localhost:9991/tasks",
+        json={
+            "description": description
+        }
+    )
+    return response.json()
+
+def find_in_progress_task():
+    response = requests.get("http://localhost:9991/tasks/in-progress")
+    return response.json()
+
+# Example usage
+def main():
+    # Create a new task
+    task = create_task("Compare React, Vue, and Angular for a new project")
+    print(f"Created task: {task}")
+    
+    # Get current in-progress task
+    in_progress_task = find_in_progress_task()
+    print(f"In progress task: {in_progress_task}")
+```
+
+```curl cURL
+# Create a new task
+curl -X POST http://localhost:9991/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Compare React, Vue, and Angular for a new project"
+  }'
+
+# Get current in-progress task
+curl -X GET http://localhost:9991/tasks/in-progress
+```
+</CodeGroup>

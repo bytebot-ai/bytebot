@@ -1,0 +1,265 @@
+---
+title: "Desktop Environment" 
+description: "The virtual Linux desktop where Bytebot performs tasks"
+---
+
+## Overview
+
+The Bytebot Desktop Environment (also called Bytebot Core) is a complete Linux desktop that runs in a Docker container. This is where Bytebot does its work - clicking buttons, typing text, browsing websites, and using applications just like you would.
+
+<img
+  src="/images/core-container.png"
+  alt="Bytebot Desktop Environment"
+  className="w-full max-w-4xl"
+/>
+
+## Why a Virtual Desktop?
+
+### Complete Isolation
+- **No Risk to Host**: All actions happen inside the container
+- **Sandboxed Environment**: Desktop can't access your host system
+- **Easy Reset**: Destroy and recreate in seconds
+- **Clean Workspace**: Each restart provides a fresh environment
+
+### Consistency Everywhere
+- **Platform Independent**: Same environment on Mac, Windows, or Linux
+- **Reproducible**: Identical setup every time
+- **Version Control**: Pin specific versions for stability
+- **No Dependencies**: Everything included in the container
+
+### Built for Automation
+- **Predictable UI**: Consistent element positioning
+- **Clean Environment**: No popups or distractions
+- **Automation-Ready**: Optimized for programmatic control
+- **Fast Startup**: Desktop ready in seconds
+
+## Technical Stack
+
+### Base System
+- **Ubuntu 22.04 LTS**: Stable, well-supported Linux distribution
+- **XFCE4 Desktop**: Lightweight, responsive desktop environment
+- **X11 Display Server**: Standard Linux graphics system
+- **supervisord**: Service management
+
+### Pre-installed Software
+
+<CardGroup cols={2}>
+  <Card title="Web Browser" icon="globe">
+    - Firefox ESR (Extended Support Release)
+    - Pre-configured for automation
+    - Clean profile without distractions
+  </Card>
+  <Card title="Productivity Tools" icon="file-lines">
+    - Text editor
+    - Office tools
+    - PDF viewer
+    - File manager
+  </Card>
+  <Card title="Communication" icon="envelope">
+    - Thunderbird email client
+    - Terminal emulator
+  </Card>
+  <Card title="Security & Development" icon="shield">
+    - 1Password password manager
+    - Visual Studio Code (VSCode)
+    - Git version control
+    - Python 3 environment
+  </Card>
+</CardGroup>
+
+### Core Services
+
+1. **bytebotd Daemon**
+   - Runs on port 9990
+   - Handles all automation requests
+   - Built on nutjs framework
+   - Provides REST API
+
+2. **noVNC Web Client**
+   - Browser-based desktop access
+   - No client installation needed
+   - WebSocket proxy included
+
+3. **Supervisor**
+   - Process management
+   - Service monitoring
+   - Automatic restarts
+   - Log management
+
+## Desktop Features
+
+### Display Configuration
+```bash
+# Resolution
+1920x1080 @ 24-bit color
+```
+
+### User Environment
+- **Username**: `user`
+- **Home Directory**: `/home/user`
+- **Sudo Access**: Yes (passwordless)
+- **Desktop Session**: Auto-login enabled
+
+### File System
+```
+/home/user/
+├── Desktop/          # Desktop shortcuts
+├── Documents/        # User documents
+├── Downloads/        # Browser downloads
+├── .config/          # Application configs
+└── .local/           # User data
+```
+
+## Accessing the Desktop
+
+### Web Browser (Recommended)
+Navigate to `http://localhost:9990/vnc` for instant access:
+- No software installation required
+- Works on any device with a browser
+- Supports touch devices
+- Clipboard sharing
+
+### MCP Control
+
+The core container also exposes an [MCP](https://github.com/rekog-labs/MCP-Nest) endpoint.
+Connect your MCP client to `http://localhost:9990/mcp` to invoke these tools over SSE.
+
+```json
+{
+  "mcpServers": {
+    "bytebot": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://127.0.0.1:9990/mcp",
+        "--transport",
+        "http-first"
+      ]
+    }
+  }
+}
+```
+
+### Direct API Control
+Most efficient for automation:
+```bash
+# Take a screenshot
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "screenshot"}'
+
+# Move mouse
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "move_mouse", "coordinate": {"x": 500, "y": 300}}'
+```
+
+## Customization
+
+### Adding Software
+
+Create a custom Dockerfile:
+```dockerfile
+FROM ghcr.io/bytebot-ai/bytebot-desktop:edge
+
+# Install additional packages
+RUN apt-get update && apt-get install -y \
+    slack-desktop \
+    zoom \
+    your-custom-app
+
+# Copy configuration files
+COPY configs/ /home/user/.config/
+```
+
+
+## Performance Optimization
+
+### Resource Allocation
+```yaml
+# Recommended settings
+deploy:
+  resources:
+    limits:
+      cpus: '2'
+      memory: 4G
+    reservations:
+      cpus: '1'
+      memory: 2G
+```
+
+## Security Hardening
+
+<Warning>
+  Default configuration prioritizes ease of use. For production, apply these security measures:
+</Warning>
+
+### Essential Security Steps
+
+1. **Change Default Passwords**
+   ```bash
+   # Set user password
+   passwd bytebot
+   ```
+
+2. **Limit Network Access**
+   ```yaml
+   # Whitelist specific domains
+   environment:
+     - ALLOWED_DOMAINS=company.com,trusted-site.com
+   
+   # Or restrict to local network only
+   ports:
+     - "10.0.0.0/8:9990:9990"
+   ```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Desktop won't start">
+    Check logs:
+    ```bash
+    docker logs bytebot-desktop
+    ```
+    Common issues:
+    - Insufficient memory
+    - Port conflicts
+    - Display server errors
+  </Accordion>
+  
+  <Accordion title="Applications crash">
+    Monitor resources:
+    ```bash
+    docker stats bytebot-desktop
+    ```
+    Solutions:
+    - Increase memory allocation
+    - Check disk space
+    - Update container image
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+1. **Regular Updates**: Keep the base image updated for security patches
+2. **Persistent Storage**: Mount volumes for important data
+3. **Backup Configurations**: Save customizations outside the container
+4. **Monitor Resources**: Track CPU/memory usage
+5. **Clean Temporary Files**: Periodic cleanup for performance
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Deploy your first agent
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/computer-use/unified-endpoint">
+    Control the desktop programmatically
+  </Card>
+  <Card title="Agent System" icon="robot" href="/core-concepts/agent-system">
+    Add AI capabilities
+  </Card>
+  <Card title="Password Management" icon="key" href="/guides/password-management">
+    Set up authentication
+  </Card>
+</CardGroup>

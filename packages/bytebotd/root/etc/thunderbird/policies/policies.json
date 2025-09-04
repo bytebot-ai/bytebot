@@ -1,0 +1,18 @@
+{
+  "policies": {
+    "UserMessaging": {
+      "ExtensionRecommendations": false,
+      "FeatureRecommendations": false,
+      "UrlbarInterventions": false,
+      "SkipOnboarding": true,
+      "MoreFromMozilla": false
+    },
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "InAppNotification": {
+      "DonationEnabled": false,
+      "SurveyEnabled": false,
+      "MessageEnabled": false
+    }
+  }
+}

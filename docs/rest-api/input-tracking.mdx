@@ -1,0 +1,41 @@
+---
+title: "Input Tracking"
+openapi: "POST /input-tracking/start"
+description: "Start and stop input tracking on the Bytebot desktop"
+---
+
+The Bytebot daemon can monitor mouse and keyboard events through the
+`InputTracking` module. Tracking is disabled by default and can be toggled
+via the REST API. Tracked actions are streamed over WebSockets so that the
+agent can store them as messages.
+
+## Start Tracking
+
+`POST /input-tracking/start`
+
+Begins capturing input events. The endpoint returns a simple status object:
+
+```json
+{
+  "status": "started"
+}
+```
+
+## Stop Tracking
+
+`POST /input-tracking/stop`
+
+Stops capturing events and clears any internal buffers. The response is
+similar to the start endpoint:
+
+```json
+{
+  "status": "stopped"
+}
+```
+
+## WebSocket Stream
+
+When tracking is active, actions are emitted on the `input_action` channel of
+the WebSocket server running on the daemon. Clients can connect to the daemon
+and listen for these events to persist them as needed.

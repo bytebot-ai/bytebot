@@ -1,0 +1,114 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskStatus {
+  PENDING
+  RUNNING
+  NEEDS_HELP
+  NEEDS_REVIEW
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum Role {
+  USER
+  ASSISTANT
+}
+
+enum TaskType {
+  IMMEDIATE
+  SCHEDULED
+}
+
+model Task {
+  id            String        @id @default(uuid())
+  description   String
+  type          TaskType      @default(IMMEDIATE)
+  status        TaskStatus    @default(PENDING)
+  priority      TaskPriority  @default(MEDIUM)
+  control       Role          @default(ASSISTANT)
+  createdAt     DateTime      @default(now())
+  createdBy     Role          @default(USER)
+  scheduledFor  DateTime?
+  updatedAt     DateTime      @updatedAt
+  executedAt    DateTime?
+  completedAt   DateTime?
+  queuedAt      DateTime?
+  error         String?
+  result        Json?
+  // Example: 
+  // { "provider": "anthropic", "name": "claude-opus-4-20250514", "title": "Claude Opus 4" }
+  model         Json
+  messages      Message[]
+  summaries     Summary[]
+  files         File[]
+}
+
+model Summary {
+  id             String     @id @default(uuid())
+  content        String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  messages       Message[]  // One-to-many relationship: one Summary has many Messages
+
+  task      Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId    String
+  
+  // Self-referential relationship
+  parentSummary  Summary?   @relation("SummaryHierarchy", fields: [parentId], references: [id])
+  parentId       String?
+  childSummaries Summary[]  @relation("SummaryHierarchy")
+}
+
+model Message {
+  id        String      @id @default(uuid())
+  // Content field follows Anthropic's content blocks structure
+  // Example: 
+  // [
+  //   {"type": "text", "text": "Hello world"},
+  //   {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": "..."}}
+  // ]
+  content   Json
+  role      Role @default(ASSISTANT)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  task      Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId    String
+  summary   Summary?    @relation(fields: [summaryId], references: [id])
+  summaryId String?     // Optional foreign key to Summary
+}
+
+model File {
+  id            String      @id @default(uuid())
+  name          String
+  type          String      // MIME type
+  size          Int         // Size in bytes
+  data          String      // Base64 encoded file data
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // Relations
+  task          Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId        String
+}
+

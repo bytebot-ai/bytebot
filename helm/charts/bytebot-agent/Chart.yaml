@@ -1,0 +1,19 @@
+apiVersion: v2
+name: bytebot-agent
+description: A Helm chart for Bytebot Agent service
+type: application
+version: 0.1.0
+appVersion: "edge"
+dependencies:
+  - name: postgresql
+    version: "~13.2"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+keywords:
+  - bytebot
+  - agent
+  - api
+maintainers:
+  - name: Bytebot Team
+sources:
+  - https://github.com/bytebot-ai/bytebot

@@ -1,0 +1,362 @@
+---
+title: "Quick Start"
+description: "Get your AI desktop agent running in 2 minutes"
+---
+
+# Choose Your Deployment Method
+
+Bytebot can be deployed in several ways depending on your needs:
+
+<Tabs>
+  <Tab title="Railway (Easiest)">
+    ## ☁️ One-click Deploy on Railway
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/bytebot?referralCode=L9lKXQ)
+
+<Steps>
+  <Step title="Visit the Template">
+    Click the Deploy Now button in the Bytebot template on Railway.
+  </Step>
+  <Step title="Add Anthropic Key">
+    Enter either your `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` for the bytebot-agent resource.
+  </Step>
+  <Step title="Deploy &amp; Launch">
+    Hit **Deploy**. Railway will build the stack, wire the services together via private networking and output a public URL for the UI. Your agent should be ready within a couple of minutes!
+  </Step>
+</Steps>
+
+<Note>
+  Need more details? See the full <a href="/deployment/railway">Railway deployment guide</a>.
+</Note>
+
+  </Tab>
+  <Tab title="Docker Compose">
+    ## 🐳 Self-host with Docker Compose
+
+## Prerequisites
+
+- Docker ≥ 20.10
+- Docker Compose
+- 4GB+ RAM available
+- AI API key from one of these providers:
+  - Anthropic ([get one here](https://console.anthropic.com)) - Claude models
+  - OpenAI ([get one here](https://platform.openai.com/api-keys)) - GPT models
+  - Google ([get one here](https://makersuite.google.com/app/apikey)) - Gemini models
+
+## 🚀 2-Minute Setup
+
+Get your self-hosted AI desktop agent running with just three commands:
+
+<Steps>
+  <Step title="Clone and Configure">
+    ```bash 
+    git clone https://github.com/bytebot-ai/bytebot.git
+    cd bytebot
+    
+    # Configure your AI provider (choose one):
+    echo "ANTHROPIC_API_KEY=your_api_key_here" > docker/.env    # For Claude
+    # echo "OPENAI_API_KEY=your_api_key_here" > docker/.env     # For OpenAI
+    # echo "GEMINI_API_KEY=your_api_key_here" > docker/.env     # For Gemini
+    ```
+  </Step>
+
+<Step title="Start the Agent Stack">
+  ```bash 
+  docker-compose -f docker/docker-compose.yml up -d 
+  ```
+
+This starts all four services:
+
+- **Bytebot Desktop**: Containerized Linux environment
+- **AI Agent**: LLM-powered task processor (supports Claude, GPT, or Gemini)
+- **Chat UI**: Web interface for interaction
+- **Database**: PostgreSQL for persistence
+
+</Step>
+
+<Step title="Open the Chat Interface">
+Navigate to [http://localhost:9992](http://localhost:9992) to access the Bytebot UI.
+
+**Two ways to interact:**
+1. **Tasks**: Enter task descriptions to have Bytebot work autonomously
+2. **Desktop**: Direct access to the virtual desktop for manual control
+
+Try asking:
+
+- "Open Firefox and search for the weather forecast"
+- "Take a screenshot of the desktop"
+- "Create a text file with today's date"
+
+</Step>
+</Steps>
+
+<Note>
+  **First time?** The initial startup may take 2-3 minutes as Docker downloads
+  the images. Subsequent starts will be much faster.
+</Note>
+
+## 🎯 What You Just Deployed
+
+You now have a complete AI desktop automation system with:
+
+<Note>
+  **🔐 Password Manager Support**: Bytebot can handle authentication automatically when you install a password manager extension. See our [password management guide](/guides/password-management) for setup instructions.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="AI Agent" icon="brain">
+    - Understands natural language
+    - Plans and executes tasks
+    - Adapts to errors
+    - Works autonomously
+  </Card>
+  <Card title="Virtual Desktop" icon="desktop">
+    - Full Ubuntu environment
+    - Browser, office tools
+    - File system access
+    - Application support
+  </Card>
+  <Card title="Task Interface" icon="window">
+    - Create and manage tasks
+    - Real-time desktop view
+    - Conversation history
+    - Takeover mode
+  </Card>
+  <Card title="REST APIs" icon="code">
+    - Programmatic control
+    - Task management API
+    - Direct desktop access
+    - MCP protocol support
+  </Card>
+</CardGroup>
+
+## 🚀 Your First Tasks
+
+Now let's see Bytebot in action! Try these example tasks:
+
+### Simple Tasks (Test the Basics)
+<CardGroup cols={2}>
+  <Card title="Take a Screenshot" icon="camera">
+    "Take a screenshot of the desktop"
+  </Card>
+  <Card title="Open Browser" icon="globe">
+    "Open Firefox and go to google.com"
+  </Card>
+  <Card title="Create File" icon="file">
+    "Create a text file called 'hello.txt' with today's date"
+  </Card>
+  <Card title="System Info" icon="info">
+    "Check the system information and tell me the OS version"
+  </Card>
+</CardGroup>
+
+### Advanced Tasks (See the Power)
+<CardGroup cols={2}>
+  <Card title="Web Research" icon="magnifying-glass">
+    "Find the top 5 AI news stories today and create a summary document"
+  </Card>
+  <Card title="Data Extraction" icon="table">
+    "Go to hacker news, find the top 10 stories, and save them to a CSV file"
+  </Card>
+  <Card title="Document Processing" icon="file-pdf">
+    "Upload a PDF contract and extract all payment terms and deadlines"
+  </Card>
+  <Card title="Multi-Step Workflow" icon="layers">
+    "Search for 'machine learning tutorials', open the first 3 results in tabs, and take screenshots of each"
+  </Card>
+</CardGroup>
+
+## Accessing Your Services
+
+| Service          | URL                                                                      | Purpose                                       |
+| ---------------- | ------------------------------------------------------------------------ | --------------------------------------------- |
+| **Tasks UI**     | [http://localhost:9992](http://localhost:9992)                           | Main interface for interacting with the agent |
+| **Agent API**    | [http://localhost:9991/tasks](http://localhost:9991/tasks)               | REST API for programmatic task creation       |
+| **Desktop API** | [http://localhost:9990/computer-use](http://localhost:9990/computer-use) | Low-level desktop control API                 |
+| **MCP SSE**      | [http://localhost:9990/mcp](http://localhost:9990/mcp)                 | Connect MCP clients for tool access           |
+
+  </Tab>
+  <Tab title="Kubernetes/Helm">
+    ## ☸️ Deploy with Helm
+    
+    See our [Helm deployment guide](/deployment/helm) for Kubernetes installation.
+  </Tab>
+  <Tab title="Desktop Only">
+    ## 🖥️ Desktop Container Only
+    
+    If you just want the virtual desktop without the AI agent:
+
+    ```bash
+    # Using pre-built image (recommended)
+    docker-compose -f docker/docker-compose.core.yml pull
+    docker-compose -f docker/docker-compose.core.yml up -d
+    ```
+
+    Or build locally:
+    ```bash
+    docker-compose -f docker/docker-compose.core.yml up -d --build
+    ```
+
+    Access the desktop at [http://localhost:9990/vnc](http://localhost:9990/vnc)
+  </Tab>
+</Tabs>
+
+## Managing Your Agent
+
+### View Logs
+
+Monitor what your agent is doing:
+
+```bash
+# All services
+docker-compose -f docker/docker-compose.yml logs -f
+
+# Just the agent
+docker-compose -f docker/docker-compose.yml logs -f bytebot-agent
+```
+
+### Stop Services
+
+```bash
+docker-compose -f docker/docker-compose.yml down
+```
+
+### Update to Latest
+
+```bash
+docker-compose -f docker/docker-compose.yml pull
+docker-compose -f docker/docker-compose.yml up -d
+```
+
+### Reset Everything
+
+Remove all data and start fresh:
+
+```bash
+docker-compose -f docker/docker-compose.yml down -v
+```
+
+## Quick API Examples
+
+### Create a Task via API
+
+```bash
+# Simple task
+curl -X POST http://localhost:9991/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Search for flights from NYC to London next month",
+    "priority": "MEDIUM"
+  }'
+
+# Task with file upload
+curl -X POST http://localhost:9991/tasks \
+  -F "description=Read this contract and summarize the key terms" \
+  -F "priority=HIGH" \
+  -F "files=@contract.pdf"
+```
+
+### Direct Desktop Control
+
+```bash
+# Take a screenshot
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "screenshot"}'
+
+# Type text
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "type_text", "text": "Hello, Bytebot!"}'
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Container won't start">
+    Check Docker is running and you have enough resources: 
+    ```bash 
+    docker info
+    docker-compose -f docker/docker-compose.yml logs 
+    ```
+  </Accordion>
+  <Accordion title="Can't connect to tasks UI">
+    Ensure all services are running: 
+    ```bash 
+    docker-compose -f docker/docker-compose.yml ps 
+    ``` 
+    All services should show as "Up".
+  </Accordion>
+  <Accordion title="Agent errors or no response">
+    Check your API key is set correctly: 
+    ```bash 
+    cat docker/.env
+    docker-compose -f docker/docker-compose.yml logs bytebot-agent 
+    ```
+    Ensure you're using a valid API key from Anthropic, OpenAI, or Google.
+  </Accordion>
+</AccordionGroup>
+
+## 📚 Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Using the UI"
+    icon="window"
+    href="/guides/task-creation"
+  >
+    Learn how to create and manage tasks effectively
+  </Card>
+  <Card title="Takeover Mode" icon="hand" href="/guides/takeover-mode">
+    Take control when you need to guide Bytebot
+  </Card>
+  <Card title="LiteLLM Integration" icon="plug" href="/deployment/litellm">
+    Use any LLM provider with Bytebot
+  </Card>
+  <Card title="API Integration" icon="code" href="/api-reference/introduction">
+    Automate Bytebot with your applications
+  </Card>
+</CardGroup>
+
+## 🔧 Configuration Options
+
+### Environment Variables
+
+<AccordionGroup>
+  <Accordion title="AI Provider Settings">
+    ```bash
+    # Choose one AI provider:
+    ANTHROPIC_API_KEY=sk-ant-...    # For Claude models
+    OPENAI_API_KEY=sk-...           # For GPT models  
+    GEMINI_API_KEY=...              # For Gemini models
+    
+    # Optional: Use specific models
+    ANTHROPIC_MODEL=claude-3-5-sonnet-20241022  # Default
+    OPENAI_MODEL=gpt-4o
+    GEMINI_MODEL=gemini-1.5-flash
+    ```
+  </Accordion>
+  <Accordion title="Port Configuration">
+    ```bash
+    # Change default ports if needed
+    # Edit docker-compose.yml ports section:
+    # bytebot-ui:
+    #   ports:
+    #     - "8080:9992"  # Change 8080 to your desired port
+    ```
+  </Accordion>
+  <Accordion title="Using LiteLLM Proxy">
+    ```bash
+    # To use multiple LLM providers, use the proxy setup:
+    docker-compose -f docker/docker-compose.proxy.yml up -d
+    
+    # This includes a pre-configured LiteLLM proxy
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  **Need help?** Join our [Discord
+  community](https://discord.com/invite/d9ewZkWPTP) for support and to share
+  what you're building!
+</Note>

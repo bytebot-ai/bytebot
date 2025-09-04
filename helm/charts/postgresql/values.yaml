@@ -1,0 +1,54 @@
+replicaCount: 1
+
+image:
+  repository: postgres
+  tag: 16-alpine
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 5432
+  targetPort: 5432
+  annotations: {}
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+
+resources:
+  limits:
+    memory: "1Gi"
+    cpu: "1000m"
+  requests:
+    memory: "512Mi"
+    cpu: "500m"
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+auth:
+  username: postgres
+  password: postgres
+  database: bytebotdb
+
+config:
+  maxConnections: 100
+  sharedBuffers: "256MB"
+
+metrics:
+  enabled: false
+  image:
+    repository: wrouesnel/postgres_exporter
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 9187

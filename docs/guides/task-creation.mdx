@@ -1,0 +1,431 @@
+---
+title: "Task Creation & Management"
+description: "Master the art of creating effective tasks and managing them through completion"
+---
+
+# Creating and Managing Tasks in Bytebot
+
+This guide will walk you through everything you need to know about creating tasks that Bytebot can execute effectively, and managing them through their lifecycle.
+
+## Understanding Tasks
+
+A task is any job you want Bytebot to complete. Tasks can be:
+
+- **Simple**: "Log in to GitHub" or "Visit example.com" (uses one program)
+- **Complex**: "Download invoices from email and save them to a folder" (uses multiple programs)
+- **File-based**: "Read the uploaded PDF and extract all email addresses" (processes uploaded files)
+- **Collaborative**: "Process invoices, ask me to handle special approvals"
+
+## Working with Files
+
+Bytebot has powerful file handling capabilities that make it perfect for document processing and data analysis tasks.
+
+### Uploading Files with Tasks
+
+When creating a task, you can upload files that will be automatically saved to the desktop instance. This is incredibly useful for:
+
+- **Document Processing**: Upload PDFs, spreadsheets, or documents for Bytebot to analyze
+- **Data Analysis**: Provide CSV files or datasets for processing
+- **Template Filling**: Upload forms or templates that need to be completed
+- **Batch Operations**: Upload multiple files for bulk processing
+
+<Note>
+  **Game Changer**: Bytebot can read entire files, including PDFs, directly into the LLM context. This means it can process large amounts of data quickly and understand complex documents without manual extraction.
+</Note>
+
+### File Upload Examples
+
+<Tabs>
+  <Tab title="Web UI">
+    1. Click the attachment button when creating a task
+    2. Select files to upload (PDFs, CSVs, images, etc.)
+    3. Files are automatically saved to the desktop
+    4. Reference them in your task description:
+    ```
+    "Read the uploaded contracts.pdf and extract all payment terms, 
+    then create a summary spreadsheet with vendor names and terms"
+    ```
+  </Tab>
+  <Tab title="API">
+    ```bash
+    # Upload files with task creation (multipart/form-data)
+    curl -X POST http://localhost:9991/tasks \
+      -F "description=Analyze the uploaded financial statements and create a summary" \
+      -F "priority=HIGH" \
+      -F "files=@financial_statements_2024.pdf" \
+      -F "files=@budget_comparison.xlsx"
+    ```
+  </Tab>
+</Tabs>
+
+### File Processing Capabilities
+
+<CardGroup cols={2}>
+  <Card title="PDF Analysis" icon="file-pdf">
+    - Extract text from PDFs
+    - Read entire PDFs into context
+    - Parse forms and contracts
+    - Extract tables and data
+  </Card>
+  <Card title="Spreadsheet Processing" icon="table">
+    - Read Excel/CSV files
+    - Analyze data patterns
+    - Generate reports
+    - Cross-reference multiple sheets
+  </Card>
+  <Card title="Document Understanding" icon="brain">
+    - Summarize long documents
+    - Extract key information
+    - Compare multiple files
+    - Answer questions about content
+  </Card>
+  <Card title="Batch Operations" icon="layer-group">
+    - Process multiple files
+    - Apply same analysis to each
+    - Consolidate results
+    - Generate unified reports
+  </Card>
+</CardGroup>
+
+## Creating Your First Task
+
+### Using the Web UI
+
+<Steps>
+  <Step title="Open Bytebot UI">
+    Navigate to `http://localhost:9992`
+  </Step>
+  
+  <Step title="Enter Your Task">
+    In the input field on the left side, type what you want done. For example:
+    ```
+    Log in to my GitHub account and check for new notifications
+    ```
+  </Step>
+  
+  <Step title="Start Task">
+    Press the arrow button or hit Enter. Bytebot will start loading and begin working on your task.
+  </Step>
+</Steps>
+
+### Using the API
+
+```bash
+curl -X POST http://localhost:9991/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Download all PDF invoices from my email and organize by date",
+    "priority": "HIGH",
+    "type": "IMMEDIATE"
+  }'
+```
+
+## Writing Effective Task Descriptions
+
+### The Golden Rules
+
+<CardGroup cols={2}>
+  <Card title="Be Specific" icon="bullseye">
+    ❌ "Do some research"
+    ✅ "Research top 5 CRM tools for small businesses"
+  </Card>
+  <Card title="Include Context" icon="info">
+    ❌ "Fill out the form"
+    ✅ "Fill out the contact form on example.com with test data"
+  </Card>
+  <Card title="Define Success" icon="check">
+    ❌ "Organize files"
+    ✅ "Organize files in Downloads folder by type into subfolders"
+  </Card>
+  <Card title="One Goal Per Task" icon="target">
+    ❌ "Do multiple unrelated things"
+    ✅ "Focus on a single objective with clear steps"
+  </Card>
+</CardGroup>
+
+### Task Description Templates
+
+#### Enterprise Process Automation
+```
+Log into [system] and:
+1. [Navigate to specific section]
+2. [Download/Extract data]
+3. [Process through other system]
+4. [Update records/Generate report]
+Handle any [specific scenarios]
+
+Example:
+Log into our banking portal and:
+1. Navigate to wire transfers section
+2. Download all pending wire confirmations
+3. Match against our ERP payment records
+4. Flag any discrepancies in the reconciliation sheet
+(Bytebot handles all authentication including 2FA automatically via password manager)
+```
+
+#### Multi-Application Workflow
+```
+Access [System A] to get [data]
+Then in [System B]:
+1. [Process the data]
+2. [Update records]
+Finally in [System C]:
+1. [Verify updates]
+2. [Generate confirmation]
+
+Example:
+Access Salesforce to get list of new customers from today
+Then in NetSuite:
+1. Create customer records with billing info
+2. Set up payment terms
+Finally in our shipping system:
+1. Verify addresses are valid
+2. Generate welcome kit shipping labels
+```
+
+#### Compliance & Audit Task
+```
+For each [entity] in [source]:
+1. Check [compliance requirement]
+2. Document [specific data]
+3. Flag any [violations/issues]
+Generate report showing [metrics]
+
+Example:
+For each vendor in our approved vendor list:
+1. Check their insurance certificates are current
+2. Document expiration dates and coverage amounts  
+3. Flag any expiring within 30 days
+Generate report showing compliance percentage by category
+```
+
+## Managing Active Tasks
+
+### Task States
+
+<img src="/images/task-lifecycle.png" alt="Task Lifecycle" className="w-full max-w-3xl" />
+
+Tasks move through these states:
+
+1. **Created** → Task is defined but not started
+2. **Queued** → Waiting for agent availability
+3. **Running** → Actively being worked on
+4. **Needs Help** → Requires human input
+5. **Completed** → Successfully finished
+6. **Failed** → Could not be completed
+
+### Monitoring Progress
+
+#### Real-time Updates
+
+Watch Bytebot work through the task detail viewer:
+
+- **Green dot**: Task is actively running
+- **Status messages**: Current step being executed
+- **Desktop view**: See what Bytebot sees in real-time
+
+#### Chat Messages
+
+Bytebot provides updates like:
+```
+Assistant: I'm now searching for project management tools...
+Assistant: Found 15 options, filtering by your criteria...
+Assistant: Creating the comparison table with 5 tools...
+```
+
+### Interacting with Running Tasks
+
+#### Providing Additional Information
+
+```
+User: "Also include free tier options in your research"
+Assistant: "I'll add a column for free tier availability to the comparison table."
+```
+
+#### Clarifying Instructions
+
+```
+Assistant: "I found multiple forms on this page. Which one should I fill out?"
+User: "Use the 'Contact Sales' form on the right side"
+```
+
+#### Modifying Tasks
+
+```
+User: "Actually, make it top 10 tools instead of top 5"
+Assistant: "I'll expand my research to include 10 tools in the comparison."
+```
+
+## Advanced Task Management
+
+### Task Dependencies
+
+Chain tasks that depend on each other:
+
+```
+Task 1: "Download the invoice from the vendor portal"
+Task 2: "Open the downloaded invoice and extract the total amount"
+Task 3: "Enter the amount into our accounting system"
+```
+
+## Best Practices
+
+### Do's ✅
+
+1. **Start Simple**: Test with basic tasks before complex ones
+2. **Provide Examples**: "Format it like the report from last week"
+3. **Include Credentials Safely**: Use takeover mode for passwords
+4. **Set Realistic Expectations**: Complex tasks take time
+5. **Review Results**: Always verify important outputs
+
+### Don'ts ❌
+
+1. **Overload Single Tasks**: Break complex workflows into steps
+2. **Assume Knowledge**: Explain custom applications
+3. **Skip Context**: Always provide necessary background
+4. **Ignore Errors**: Address issues promptly
+5. **Rush Critical Tasks**: Allow time for careful execution
+
+## Task Examples by Category
+
+### 📄 Document Processing & Analysis
+```
+"Read the uploaded contract.pdf and extract all key terms including payment schedules, deliverables, and termination clauses. Create a summary document with these details."
+
+"Process all the uploaded invoice PDFs, extract vendor names, amounts, and due dates, then create a consolidated Excel spreadsheet sorted by due date."
+
+"Analyze the uploaded financial_report.pdf and answer these questions: What was the revenue growth? What are the main risk factors mentioned? What is the debt-to-equity ratio?"
+
+"Read through the uploaded employee_handbook.pdf and create a checklist of all compliance requirements mentioned in the document."
+```
+
+### 🏦 Enterprise Automation (RPA-Style Workflows)
+```
+"Log into our banking portal, download all transaction files from last month, save them to the Finance/Statements folder, then run the reconciliation script on each file."
+
+(Note: Bytebot handles all authentication including 2FA automatically using the built-in password manager)
+
+"Access the vendor portal at supplier.example.com, navigate to the invoice section, download all pending invoices, extract the data into our standard template, and upload to the AP system."
+
+"Open our legacy ERP system, export the customer list, then for each customer, look them up in the new CRM and update their status and last contact date."
+```
+
+### 📊 Financial Operations & Data Analysis
+```
+"Read the uploaded bank_statements folder containing 12 monthly PDFs, extract all transactions over $10,000, and create a summary report showing patterns and anomalies."
+
+"Log into each of our 5 bank accounts, download the daily statements, consolidate them into a single cash position report, and save to the shared finance folder."
+
+"Process the uploaded expense_reports.zip file, review all reports over $1,000, create a summary with policy violations flagged, and prepare for approval."
+
+"Navigate to the tax authority website, download all GST/VAT returns for Q4, extract the figures, and populate our tax reconciliation spreadsheet."
+```
+
+### 🔄 Multi-System Integration
+```
+"Pull today's orders from Shopify, create corresponding entries in NetSuite, update inventory in our WMS, and trigger shipping labels in ShipStation."
+
+"Extract employee data from Workday, cross-reference with our access control system, identify discrepancies, and create tickets for IT to resolve."
+
+"Log into our insurance portal, download policy documents for all active policies, extract key dates and coverage amounts, update our risk management database."
+```
+
+### 📈 Compliance & Reporting
+```
+"Access all state regulatory websites for our operating regions, check for new compliance updates since last month, download relevant documents, and create a summary report."
+
+"Log into our various SaaS tools (list provided), export user access reports, consolidate into a single audit trail, and flag any terminated employees still with access."
+
+"Navigate to customer portal, download all SLA performance reports, extract metrics, compare against our internal data, and highlight discrepancies."
+```
+
+### 🤝 Development & QA Integration
+```
+"After the code agent deploys the new feature, test the complete user journey from signup to checkout, take screenshots at each step, and verify against the design specs."
+
+"Run through all test scenarios in our QA checklist, but for any failures, have the code agent analyze the error and attempt a fix, then retest automatically."
+
+"Monitor our staging environment, when a new build is deployed, automatically run the smoke test suite and create a visual regression report comparing to production."
+```
+
+## Troubleshooting Common Issues
+
+<AccordionGroup>
+  <Accordion title="Task stuck in 'Running' state">
+    **Possible causes**:
+    - Waiting for slow page/app to load
+    - Encountered unexpected popup
+    - Unclear next step
+    
+    **Solutions**:
+    - Check desktop viewer for current state
+    - Provide clarification via chat
+    - Use takeover mode to help
+    - Cancel and restart with clearer instructions
+  </Accordion>
+  
+  <Accordion title="Task completed but wrong result">
+    **Possible causes**:
+    - Ambiguous instructions
+    - Website/app changed
+    - Misunderstood context
+    
+    **Solutions**:
+    - Review task description for clarity
+    - Provide specific examples
+    - Break into smaller subtasks
+    - Use takeover mode to demonstrate
+  </Accordion>
+  
+  <Accordion title="Task failed immediately">
+    **Possible causes**:
+    - Invalid URL or application
+    - Missing prerequisites
+    - System resource issues
+    
+    **Solutions**:
+    - Verify URLs and application names
+    - Ensure required files/data exist
+    - Check system resources
+    - Review error messages in chat
+  </Accordion>
+</AccordionGroup>
+
+## Task Management Tips
+
+### Organizing Multiple Tasks
+
+1. **Use Clear Naming**: Include date, category, or project
+2. **Group Related Tasks**: Process similar tasks together
+3. **Priority Management**: Reserve 'Urgent' for true emergencies
+4. **Regular Reviews**: Check completed tasks for quality
+
+### Performance Optimization
+
+- **Batch Similar Tasks**: Group web research, data entry, etc.
+- **Prepare Resources**: Have files/data ready before starting
+- **Clear Desktop**: Minimize distractions and popups
+- **Stable Environment**: Ensure good internet and system resources
+
+### Learning from Tasks
+
+After each task:
+1. Review the approach Bytebot took
+2. Note any inefficiencies
+3. Refine future task descriptions
+4. Build a library of effective prompts
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Takeover Mode" icon="hand" href="/guides/takeover-mode">
+    Learn human-AI collaboration
+  </Card>
+  <Card title="API Integration" icon="code" href="/api-reference/agent/tasks">
+    Automate task creation
+  </Card>
+</CardGroup>
+
+<Note>
+  **Pro Tip**: Start with simple tasks to understand Bytebot's capabilities, then gradually increase complexity as you learn what works best.
+</Note>

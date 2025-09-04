@@ -1,0 +1,58 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/bytebot-ai/bytebot-desktop
+  tag: edge
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 9990
+  targetPort: 9990
+  annotations: {}
+
+resources:
+  limits:
+    memory: "4Gi"
+    cpu: "2000m"
+  requests:
+    memory: "2Gi"
+    cpu: "1000m"
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+env:
+  - name: DISPLAY
+    value: ":0"
+
+shm:
+  enabled: true
+  size: "2Gi"
+
+securityContext:
+  privileged: true
+
+persistence:
+  enabled: false
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: bytebot-desktop.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []

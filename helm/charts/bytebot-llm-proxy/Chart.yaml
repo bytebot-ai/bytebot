@@ -1,0 +1,15 @@
+apiVersion: v2
+name: bytebot-llm-proxy
+description: A Helm chart for LiteLLM proxy service
+type: application
+version: 0.1.0
+appVersion: "main-stable"
+keywords:
+  - litellm
+  - proxy
+  - llm
+  - ai
+maintainers:
+  - name: Bytebot Team
+sources:
+  - https://github.com/bytebot-ai/bytebot

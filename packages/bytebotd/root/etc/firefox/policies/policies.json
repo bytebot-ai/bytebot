@@ -1,0 +1,28 @@
+{
+  "policies": {
+    "FirefoxHome": {
+      "Search": true,
+      "TopSites": false,
+      "SponsoredTopSites": false,
+      "Highlights": false,
+      "Pocket": false,
+      "SponsoredPocket": false,
+      "Snippets": false,
+      "Locked": true
+    },
+    "SkipTermsOfUse": true,
+    "OfferToSaveLoginsDefault": false,
+    "OfferToSaveLogins": false,
+    "PasswordManagerEnabled": false,
+    "PDFjs": { "Enabled": true, "EnablePermissions": true },
+    "Notifications": { "BlockNewRequests": true, "Locked": true },
+    "UserMessaging": {
+      "ExtensionRecommendations": false,
+      "FeatureRecommendations": false,
+      "UrlbarInterventions": false,
+      "SkipOnboarding": true,
+      "MoreFromMozilla": false,
+      "FirefoxLabs": false
+    }
+  }
+}

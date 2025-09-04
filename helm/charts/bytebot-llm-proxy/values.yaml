@@ -1,0 +1,78 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/berriai/litellm
+  tag: main-stable
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 4000
+  targetPort: 4000
+  annotations: {}
+
+resources:
+  limits:
+    memory: "1Gi"
+    cpu: "1000m"
+  requests:
+    memory: "512Mi"
+    cpu: "500m"
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+env:
+  ANTHROPIC_API_KEY: ""
+  OPENAI_API_KEY: ""
+  GEMINI_API_KEY: ""
+
+# LiteLLM configuration
+config:
+  model_list:
+    # Anthropic Models
+    - model_name: claude-opus-4
+      litellm_params:
+        model: anthropic/claude-opus-4-20250514
+        api_key: os.environ/ANTHROPIC_API_KEY
+    - model_name: claude-sonnet-4
+      litellm_params:
+        model: anthropic/claude-sonnet-4-20250514
+        api_key: os.environ/ANTHROPIC_API_KEY
+    
+    # OpenAI Models
+    - model_name: gpt-4.1
+      litellm_params:
+        model: openai/gpt-4.1
+        api_key: os.environ/OPENAI_API_KEY
+    - model_name: gpt-4o
+      litellm_params:
+        model: openai/gpt-4o
+        api_key: os.environ/OPENAI_API_KEY
+    
+    # Gemini Models
+    - model_name: gemini-2.5-pro
+      litellm_params:
+        model: gemini/gemini-2.5-pro
+        api_key: os.environ/GEMINI_API_KEY
+    - model_name: gemini-2.5-flash
+      litellm_params:
+        model: gemini/gemini-2.5-flash
+        api_key: os.environ/GEMINI_API_KEY
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: litellm.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []

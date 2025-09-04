@@ -1,0 +1,14 @@
+apiVersion: v2
+name: bytebot-ui
+description: A Helm chart for Bytebot UI service
+type: application
+version: 0.1.0
+appVersion: "edge"
+keywords:
+  - bytebot
+  - ui
+  - frontend
+maintainers:
+  - name: Bytebot Team
+sources:
+  - https://github.com/bytebot-ai/bytebot

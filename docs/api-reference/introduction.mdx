@@ -1,0 +1,151 @@
+---
+title: "API Reference"
+description: "Overview of the Bytebot API endpoints for programmatic control"
+---
+
+# Bytebot API Overview
+
+Bytebot provides two main APIs for programmatic control:
+
+## 1. Agent API (Task Management)
+
+The Agent API runs on port 9991 and provides high-level task management:
+
+<CardGroup cols={2}>
+  <Card
+    title="Task Management"
+    icon="list-check"
+    href="/api-reference/agent/tasks"
+  >
+    Create, manage, and monitor AI-powered tasks programmatically
+  </Card>
+  <Card
+    title="UI Integration"
+    icon="window"
+    href="/api-reference/agent/ui"
+  >
+    WebSocket connections and real-time updates for custom UIs
+  </Card>
+</CardGroup>
+
+### Agent API Base URL
+```
+http://localhost:9991
+```
+
+### Example Task Creation
+```bash
+curl -X POST http://localhost:9991/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Download invoices from webmail and organize by date",
+    "priority": "HIGH"
+  }'
+```
+
+## 2. Desktop API (Direct Control)
+
+The Desktop API runs on port 9990 and provides low-level desktop control:
+
+<CardGroup cols={2}>
+  <Card
+    title="Computer Control"
+    icon="keyboard"
+    href="/api-reference/computer-use/unified-endpoint"
+  >
+    Direct control of mouse, keyboard, and screen capture
+  </Card>
+  <Card
+    title="Usage Examples"
+    icon="code"
+    href="/api-reference/computer-use/examples"
+  >
+    Code examples for common automation scenarios
+  </Card>
+</CardGroup>
+
+### Desktop API Base URL
+```
+http://localhost:9990
+```
+
+### Example Desktop Control
+```bash
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "screenshot"}'
+```
+
+### MCP Support
+
+The Desktop API also exposes an MCP (Model Context Protocol) endpoint:
+```
+http://localhost:9990/mcp
+```
+
+Connect your MCP client to access desktop control tools over SSE.
+
+## Authentication
+
+- **Local Access**: No authentication required by default
+- **Remote Access**: Configure authentication based on your security requirements
+- **Production**: Implement API keys, OAuth, or other authentication methods
+
+## Response Formats
+
+### Agent API Response
+```json
+{
+  "id": "task-123",
+  "status": "RUNNING",
+  "description": "Your task description",
+  "messages": [...],
+  "createdAt": "2024-01-01T00:00:00Z"
+}
+```
+
+### Desktop API Response
+```json
+{
+  "success": true,
+  "data": { ... },  // Response data specific to the action
+  "error": null     // Error message if success is false
+}
+```
+
+## Error Handling
+
+Both APIs use standard HTTP status codes:
+
+| Status Code | Description                          |
+| ----------- | ------------------------------------ |
+| 200         | Success                              |
+| 201         | Created (new resource)               |
+| 400         | Bad Request - Invalid parameters     |
+| 401         | Unauthorized - Authentication failed |
+| 404         | Not Found - Resource doesn't exist   |
+| 500         | Internal Server Error                |
+
+## Rate Limiting
+
+- **Agent API**: No hard limits, but consider task queue capacity
+- **Desktop API**: No rate limiting, but rapid actions may impact desktop performance
+
+## Best Practices
+
+1. **Use Agent API for high-level automation** - Let the AI handle complexity
+2. **Use Desktop API for precise control** - When you need exact actions
+3. **Combine both APIs** - Create tasks via Agent API, monitor via Desktop API
+4. **Handle errors gracefully** - Implement retry logic for transient failures
+5. **Monitor resource usage** - Both APIs can be resource-intensive
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get your APIs running
+  </Card>
+  <Card title="Task Examples" icon="code" href="/guides/task-creation">
+    See the APIs in action
+  </Card>
+</CardGroup>

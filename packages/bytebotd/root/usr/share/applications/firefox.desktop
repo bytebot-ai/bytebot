@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Firefox Web Browser
+Comment=Browse the web with Firefox
+Exec=/usr/bin/firefox-esr %U
+Icon=firefox-esr
+Path=
+Terminal=false
+StartupNotify=true
+Categories=Network;WebBrowser;

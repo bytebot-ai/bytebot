@@ -1,0 +1,21 @@
+Thank you for installing {{ .Chart.Name }}!
+
+To access Bytebot:
+
+1. Port-forward the UI service:
+   kubectl port-forward -n {{ .Release.Namespace }} service/bytebot-ui 9992:9992
+
+2. Open your browser:
+   http://localhost:9992
+
+{{- if .Values.ingress.enabled }}
+
+External access is configured at:
+http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}
+{{- end }}
+
+To check deployment status:
+kubectl get pods -n {{ .Release.Namespace }}
+
+For documentation:
+https://docs.bytebot.ai/deployment/helm

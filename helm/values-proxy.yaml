@@ -1,0 +1,52 @@
+# Proxy configuration for Bytebot with LiteLLM
+# This values file enables the LiteLLM proxy and configures the agent to use it
+# Usage: helm install bytebot . -f values-proxy.yaml
+
+# Enable LiteLLM proxy
+bytebot-llm-proxy:
+  enabled: true
+  fullnameOverride: "bytebot-llm-proxy"
+  env:
+    # Set your API keys here
+    ANTHROPIC_API_KEY: ""
+    OPENAI_API_KEY: ""
+    GEMINI_API_KEY: ""
+  service:
+    type: ClusterIP
+    port: 4000
+  resources:
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Configure agent to use the proxy
+bytebot-agent:
+  config:
+    llmProxyUrl: "http://bytebot-llm-proxy:4000"
+  # Don't set API keys on the agent when using proxy
+  env:
+    ANTHROPIC_API_KEY: ""
+    OPENAI_API_KEY: ""
+    GEMINI_API_KEY: ""
+
+# All other services remain the same
+postgresql:
+  enabled: true
+
+bytebot-desktop:
+  enabled: true
+
+bytebot-ui:
+  enabled: true
+
+# Optional: Enable ingress for external access
+ingress:
+  enabled: false
+  className: "nginx"
+  host: bytebot.example.com
+  tls:
+    enabled: true
+    secretName: bytebot-tls

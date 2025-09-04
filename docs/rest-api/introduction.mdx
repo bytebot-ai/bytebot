@@ -1,0 +1,77 @@
+---
+title: "Introduction"
+description: "Overview of the Bytebot REST API"
+---
+
+## Bytebot REST API
+
+Bytebot's core functionality is exposed through its REST API, which provides endpoints for interacting with the desktop environment. The API allows for programmatic control of mouse movement, keyboard input, and screen capture.
+
+### Base URL
+
+All API endpoints are relative to the base URL:
+
+```
+http://localhost:9990
+```
+
+The port can be configured when running the container.
+
+### Authentication
+
+The Bytebot API does not require authentication by default when accessed locally. For remote access, standard network security practices should be implemented.
+
+### Response Format
+
+All API responses follow a standard JSON format:
+
+```json
+{
+  "success": true,
+  "data": { ... },  // Response data specific to the action
+  "error": null     // Error message if success is false
+}
+```
+
+### Error Handling
+
+When an error occurs, the API returns:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": "Detailed error message"
+}
+```
+
+Common HTTP status codes:
+
+| Status Code | Description                      |
+| ----------- | -------------------------------- |
+| 200         | Success                          |
+| 400         | Bad Request - Invalid parameters |
+| 500         | Internal Server Error            |
+
+### Available Endpoints
+
+<CardGroup cols={2}>
+  <Card
+    title="Computer Use"
+    icon="computer-mouse"
+    href="/rest-api/computer-use"
+  >
+    Execute desktop automation actions like mouse movements, clicks, keyboard
+    input, and screenshots
+  </Card>
+  <Card title="Input Tracking" icon="eye" href="/rest-api/input-tracking">
+    Control and stream keyboard and mouse events from the desktop
+  </Card>
+  <Card title="Usage Examples" icon="code" href="/rest-api/examples">
+    Code examples and snippets for common automation scenarios
+  </Card>
+</CardGroup>
+
+### Rate Limiting
+
+The API currently does not implement rate limiting, but excessive requests may impact performance of the virtual desktop environment.

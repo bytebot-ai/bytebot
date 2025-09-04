@@ -1,0 +1,32 @@
+apiVersion: v2
+name: bytebot
+description: Bytebot - Complete deployment package
+type: application
+version: 0.1.0
+appVersion: "edge"
+dependencies:
+  - name: postgresql
+    version: 0.1.0
+    repository: file://./charts/postgresql
+    condition: postgresql.enabled
+  - name: bytebot-desktop
+    version: 0.1.0
+    repository: file://./charts/bytebot-desktop
+  - name: bytebot-agent
+    version: 0.1.0
+    repository: file://./charts/bytebot-agent
+  - name: bytebot-ui
+    version: 0.1.0
+    repository: file://./charts/bytebot-ui
+  - name: bytebot-llm-proxy
+    version: 0.1.0
+    repository: file://./charts/bytebot-llm-proxy
+    condition: bytebot-llm-proxy.enabled
+keywords:
+  - bytebot
+  - automation
+  - remote-desktop
+maintainers:
+  - name: Bytebot Team
+sources:
+  - https://github.com/bytebot-ai/bytebot

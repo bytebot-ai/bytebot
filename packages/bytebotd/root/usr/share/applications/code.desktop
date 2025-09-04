@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=VSCode
+Comment=Visual Studio Code
+Exec=/usr/bin/code --password-store=basic %F
+Icon=vscode
+Categories=TextEditor;Development;IDE;
+MimeType=application/x-code-workspace;
+StartupWMClass=code

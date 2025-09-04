@@ -1,0 +1,271 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Bytebot Computer Use API",
+    "version": "1.0.0",
+    "description": "Control the Bytebot virtual desktop via a single endpoint"
+  },
+  "paths": {
+    "/computer-use": {
+      "post": {
+        "summary": "Execute a computer action",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComputerAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComputerActionResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error executing action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {"type": "string"},
+                    "error": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Coordinates": {
+        "type": "object",
+        "properties": {
+          "x": {"type": "number"},
+          "y": {"type": "number"}
+        },
+        "required": ["x", "y"]
+      },
+      "Button": {
+        "type": "string",
+        "enum": ["left", "right", "middle"]
+      },
+      "Press": {
+        "type": "string",
+        "enum": ["up", "down"]
+      },
+      "ScrollDirection": {
+        "type": "string",
+        "enum": ["up", "down", "left", "right"]
+      },
+      "MoveMouseAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["move_mouse"]},
+          "coordinates": {"$ref": "#/components/schemas/Coordinates"}
+        },
+        "required": ["action", "coordinates"]
+      },
+      "TraceMouseAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["trace_mouse"]},
+          "path": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/Coordinates"}
+          },
+          "holdKeys": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["action", "path"]
+      },
+      "ClickMouseAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["click_mouse"]},
+          "coordinates": {"$ref": "#/components/schemas/Coordinates"},
+          "button": {"$ref": "#/components/schemas/Button"},
+          "holdKeys": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "clickCount": {"type": "integer", "minimum": 1}
+        },
+        "required": ["action", "button", "clickCount"]
+      },
+      "PressMouseAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["press_mouse"]},
+          "coordinates": {"$ref": "#/components/schemas/Coordinates"},
+          "button": {"$ref": "#/components/schemas/Button"},
+          "press": {"$ref": "#/components/schemas/Press"}
+        },
+        "required": ["action", "button", "press"]
+      },
+      "DragMouseAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["drag_mouse"]},
+          "path": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/Coordinates"}
+          },
+          "button": {"$ref": "#/components/schemas/Button"},
+          "holdKeys": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["action", "path", "button"]
+      },
+      "ScrollAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["scroll"]},
+          "coordinates": {"$ref": "#/components/schemas/Coordinates"},
+          "direction": {"$ref": "#/components/schemas/ScrollDirection"},
+          "scrollCount": {"type": "integer", "minimum": 1},
+          "holdKeys": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["action", "direction", "scrollCount"]
+      },
+      "TypeKeysAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["type_keys"]},
+          "keys": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "delay": {"type": "integer", "minimum": 0}
+        },
+        "required": ["action", "keys"]
+      },
+      "PressKeysAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["press_keys"]},
+          "keys": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "press": {"$ref": "#/components/schemas/Press"}
+        },
+        "required": ["action", "keys", "press"]
+      },
+      "TypeTextAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["type_text"]},
+          "text": {"type": "string"},
+          "delay": {"type": "integer", "minimum": 0}
+        },
+        "required": ["action", "text"]
+      },
+      "WaitAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["wait"]},
+          "duration": {"type": "integer", "minimum": 0}
+        },
+        "required": ["action", "duration"]
+      },
+      "ScreenshotAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["screenshot"]}
+        },
+        "required": ["action"]
+      },
+      "CursorPositionAction": {
+        "type": "object",
+        "properties": {
+          "action": {"enum": ["cursor_position"]}
+        },
+        "required": ["action"]
+      },
+      "ComputerAction": {
+        "oneOf": [
+          {"$ref": "#/components/schemas/MoveMouseAction"},
+          {"$ref": "#/components/schemas/TraceMouseAction"},
+          {"$ref": "#/components/schemas/ClickMouseAction"},
+          {"$ref": "#/components/schemas/PressMouseAction"},
+          {"$ref": "#/components/schemas/DragMouseAction"},
+          {"$ref": "#/components/schemas/ScrollAction"},
+          {"$ref": "#/components/schemas/TypeKeysAction"},
+          {"$ref": "#/components/schemas/PressKeysAction"},
+          {"$ref": "#/components/schemas/TypeTextAction"},
+          {"$ref": "#/components/schemas/WaitAction"},
+          {"$ref": "#/components/schemas/ScreenshotAction"},
+          {"$ref": "#/components/schemas/CursorPositionAction"}
+        ],
+        "discriminator": {
+          "propertyName": "action",
+          "mapping": {
+            "move_mouse": "#/components/schemas/MoveMouseAction",
+            "trace_mouse": "#/components/schemas/TraceMouseAction",
+            "click_mouse": "#/components/schemas/ClickMouseAction",
+            "press_mouse": "#/components/schemas/PressMouseAction",
+            "drag_mouse": "#/components/schemas/DragMouseAction",
+            "scroll": "#/components/schemas/ScrollAction",
+            "type_keys": "#/components/schemas/TypeKeysAction",
+            "press_keys": "#/components/schemas/PressKeysAction",
+            "type_text": "#/components/schemas/TypeTextAction",
+            "wait": "#/components/schemas/WaitAction",
+            "screenshot": "#/components/schemas/ScreenshotAction",
+            "cursor_position": "#/components/schemas/CursorPositionAction"
+          }
+        }
+      },
+      "ScreenshotResponse": {
+        "type": "object",
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "Base64 encoded PNG"
+          }
+        },
+        "required": ["image"]
+      },
+      "CursorPosition": {
+        "type": "object",
+        "properties": {
+          "x": {"type": "number"},
+          "y": {"type": "number"}
+        },
+        "required": ["x", "y"]
+      },
+      "ComputerActionResponse": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "data": {
+            "oneOf": [
+              {"$ref": "#/components/schemas/ScreenshotResponse"},
+              {"$ref": "#/components/schemas/CursorPosition"}
+            ]
+          }
+        },
+        "required": ["success"]
+      }
+    }
+  }
+}

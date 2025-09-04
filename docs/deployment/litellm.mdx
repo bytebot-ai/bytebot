@@ -1,0 +1,510 @@
+---
+title: "LiteLLM Integration"
+description: "Use any LLM provider with Bytebot through LiteLLM proxy"
+---
+
+# Connect Any LLM to Bytebot with LiteLLM
+
+LiteLLM acts as a unified proxy that lets you use 100+ LLM providers with Bytebot - including Azure OpenAI, AWS Bedrock, Anthropic, Hugging Face, Ollama, and more. This guide shows you how to set up LiteLLM with Bytebot.
+
+## Why Use LiteLLM?
+
+<CardGroup cols={2}>
+  <Card title="100+ LLM Providers" icon="plug">
+    Use Azure, AWS, GCP, Anthropic, OpenAI, Cohere, and local models
+  </Card>
+  <Card title="Cost Tracking" icon="dollar-sign">
+    Monitor spending across all providers in one place
+  </Card>
+  <Card title="Load Balancing" icon="scale-balanced">
+    Distribute requests across multiple models and providers
+  </Card>
+  <Card title="Fallback Models" icon="shield">
+    Automatic failover when primary models are unavailable
+  </Card>
+</CardGroup>
+
+## Quick Start with Bytebot's Built-in LiteLLM Proxy
+
+Bytebot includes a pre-configured LiteLLM proxy service that makes it easy to use any LLM provider. Here's how to set it up:
+
+<Steps>
+  <Step title="Use Docker Compose with Proxy">
+    The easiest way is to use the proxy-enabled Docker Compose file:
+    
+    ```bash
+    # Clone Bytebot
+    git clone https://github.com/bytebot-ai/bytebot.git
+    cd bytebot
+    
+    # Set up your API keys in docker/.env
+    cat > docker/.env << EOF
+    # Add any combination of these keys
+    ANTHROPIC_API_KEY=sk-ant-your-key-here
+    OPENAI_API_KEY=sk-your-key-here  
+    GEMINI_API_KEY=your-key-here
+    EOF
+    
+    # Start Bytebot with LiteLLM proxy
+    docker-compose -f docker/docker-compose.proxy.yml up -d
+    ```
+    
+    This automatically:
+    - Starts the `bytebot-llm-proxy` service on port 4000
+    - Configures the agent to use the proxy via `BYTEBOT_LLM_PROXY_URL`
+    - Makes all configured models available through the proxy
+  </Step>
+  
+  <Step title="Customize Model Configuration">
+    To add custom models or providers, edit the LiteLLM config:
+    
+    ```yaml
+    # packages/bytebot-llm-proxy/litellm-config.yaml
+    model_list:
+      # Add Azure OpenAI
+      - model_name: azure-gpt-4o
+        litellm_params:
+          model: azure/gpt-4o-deployment
+          api_base: https://your-resource.openai.azure.com/
+          api_key: os.environ/AZURE_API_KEY
+          api_version: "2024-02-15-preview"
+      
+      # Add AWS Bedrock
+      - model_name: claude-bedrock
+        litellm_params:
+          model: bedrock/anthropic.claude-3-5-sonnet
+          aws_region_name: us-east-1
+      
+      # Add local models via Ollama
+      - model_name: local-llama
+        litellm_params:
+          model: ollama/llama3:70b
+          api_base: http://host.docker.internal:11434
+    ```
+    
+    Then rebuild:
+    ```bash
+    docker-compose -f docker/docker-compose.proxy.yml up -d --build
+    ```
+  </Step>
+  
+  <Step title="Verify Models are Available">
+    The Bytebot agent automatically queries the proxy for available models:
+    
+    ```bash
+    # Check available models through Bytebot API
+    curl http://localhost:9991/tasks/models
+    
+    # Or directly from LiteLLM proxy
+    curl http://localhost:4000/model/info
+    ```
+    
+    The UI will show all available models in the model selector.
+  </Step>
+</Steps>
+
+## How It Works
+
+### Architecture
+
+```mermaid
+graph LR
+    A[Bytebot UI] -->|Select Model| B[Bytebot Agent]
+    B -->|BYTEBOT_LLM_PROXY_URL| C[LiteLLM Proxy :4000]
+    C -->|Route Request| D[Anthropic API]
+    C -->|Route Request| E[OpenAI API]  
+    C -->|Route Request| F[Google API]
+    C -->|Route Request| G[Any Provider]
+```
+
+### Key Components
+
+1. **bytebot-llm-proxy Service**: A LiteLLM instance running in Docker that:
+   - Runs on port 4000 within the Bytebot network
+   - Uses the config from `packages/bytebot-llm-proxy/litellm-config.yaml`
+   - Inherits API keys from environment variables
+
+2. **Agent Integration**: The Bytebot agent:
+   - Checks for `BYTEBOT_LLM_PROXY_URL` environment variable
+   - If set, queries the proxy at `/model/info` for available models
+   - Routes all LLM requests through the proxy
+
+3. **Pre-configured Models**: Out of the box support for:
+   - Anthropic: Claude Opus 4, Claude Sonnet 4
+   - OpenAI: GPT-4.1, GPT-4o
+   - Google: Gemini 2.5 Pro, Gemini 2.5 Flash
+
+## Provider Configurations
+
+### Azure OpenAI
+
+```yaml
+model_list:
+  - model_name: azure-gpt-4o
+    litellm_params:
+      model: azure/gpt-4o-deployment-name
+      api_base: https://your-resource.openai.azure.com/
+      api_key: your-azure-key
+      api_version: "2024-02-15-preview"
+  
+  - model_name: azure-gpt-4o-vision
+    litellm_params:
+      model: azure/gpt-4o-deployment-name
+      api_base: https://your-resource.openai.azure.com/
+      api_key: your-azure-key
+      api_version: "2024-02-15-preview"
+      supports_vision: true
+```
+
+### AWS Bedrock
+
+```yaml
+model_list:
+  - model_name: claude-bedrock
+    litellm_params:
+      model: bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0
+      aws_region_name: us-east-1
+      # Uses AWS credentials from environment
+  
+  - model_name: llama-bedrock
+    litellm_params:
+      model: bedrock/meta.llama3-70b-instruct-v1:0
+      aws_region_name: us-east-1
+```
+
+### Google Vertex AI
+
+```yaml
+model_list:
+  - model_name: gemini-vertex
+    litellm_params:
+      model: vertex_ai/gemini-1.5-pro
+      vertex_project: your-gcp-project
+      vertex_location: us-central1
+      # Uses GCP credentials from environment
+```
+
+### Local Models (Ollama)
+
+```yaml
+model_list:
+  - model_name: local-llama
+    litellm_params:
+      model: ollama/llama3:70b
+      api_base: http://ollama:11434
+  
+  - model_name: local-mixtral
+    litellm_params:
+      model: ollama/mixtral:8x7b
+      api_base: http://ollama:11434
+```
+
+### Hugging Face
+
+```yaml
+model_list:
+  - model_name: hf-llama
+    litellm_params:
+      model: huggingface/meta-llama/Llama-3-70b-chat-hf
+      api_key: hf_your_token
+```
+
+## Advanced Features
+
+### Load Balancing
+
+Distribute requests across multiple providers:
+
+```yaml
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: gpt-4o
+      api_key: sk-openai-key
+  
+  - model_name: gpt-4o  # Same name for load balancing
+    litellm_params:
+      model: azure/gpt-4o
+      api_base: https://azure.openai.azure.com/
+      api_key: azure-key
+
+router_settings:
+  routing_strategy: "least-busy"  # or "round-robin", "latency-based"
+```
+
+### Fallback Models
+
+Configure automatic failover:
+
+```yaml
+model_list:
+  - model_name: primary-model
+    litellm_params:
+      model: claude-3-5-sonnet-20241022
+      api_key: sk-ant-key
+  
+  - model_name: fallback-model
+    litellm_params:
+      model: gpt-4o
+      api_key: sk-openai-key
+
+router_settings:
+  model_group_alias:
+    "smart-model": ["primary-model", "fallback-model"]
+  
+# Use "smart-model" in Bytebot config
+```
+
+### Cost Controls
+
+Set spending limits and track usage:
+
+```yaml
+general_settings:
+  master_key: sk-litellm-master
+  database_url: "postgresql://user:pass@localhost:5432/litellm"
+  
+  # Budget limits
+  max_budget: 100  # $100 monthly limit
+  budget_duration: "30d"
+  
+  # Per-model limits
+  model_max_budget:
+    gpt-4o: 50
+    claude-3-5-sonnet: 50
+
+litellm_settings:
+  callbacks: ["langfuse"]  # For detailed tracking
+```
+
+### Rate Limiting
+
+Prevent API overuse:
+
+```yaml
+model_list:
+  - model_name: rate-limited-gpt
+    litellm_params:
+      model: gpt-4o
+      api_key: sk-key
+      rpm: 100  # Requests per minute
+      tpm: 100000  # Tokens per minute
+```
+
+## Alternative Setup: External LiteLLM Proxy
+
+If you prefer to run LiteLLM separately or have an existing LiteLLM deployment:
+
+### Option 1: Modify docker-compose.yml
+
+```yaml
+# docker-compose.yml (without built-in proxy)
+services:
+  bytebot-agent:
+    environment:
+      # Point to your external LiteLLM instance
+      - BYTEBOT_LLM_PROXY_URL=http://your-litellm-server:4000
+    # ... rest of config
+```
+
+### Option 2: Use Environment Variable
+
+```bash
+# Set the proxy URL before starting
+export BYTEBOT_LLM_PROXY_URL=http://your-litellm-server:4000
+
+# Start normally
+docker-compose -f docker/docker-compose.yml up -d
+```
+
+### Option 3: Run Standalone LiteLLM
+
+```bash
+# Run your own LiteLLM instance
+docker run -d \
+  --name litellm-external \
+  -p 4000:4000 \
+  -v $(pwd)/custom-config.yaml:/app/config.yaml \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  ghcr.io/berriai/litellm:main \
+  --config /app/config.yaml
+
+# Then start Bytebot with:
+export BYTEBOT_LLM_PROXY_URL=http://localhost:4000
+docker-compose up -d
+```
+
+## Kubernetes Setup
+
+Deploy with Helm:
+
+```yaml
+# litellm-values.yaml
+replicaCount: 2
+
+image:
+  repository: ghcr.io/berriai/litellm
+  tag: main
+
+service:
+  type: ClusterIP
+  port: 4000
+
+config:
+  model_list:
+    - model_name: claude-3-5-sonnet
+      litellm_params:
+        model: claude-3-5-sonnet-20241022
+        api_key: ${ANTHROPIC_API_KEY}
+  
+  general_settings:
+    master_key: ${LITELLM_MASTER_KEY}
+
+# Then in Bytebot values.yaml:
+agent:
+  openai:
+    enabled: true
+    apiKey: "${LITELLM_MASTER_KEY}"
+    baseUrl: "http://litellm:4000/v1"
+    model: "claude-3-5-sonnet"
+```
+
+## Monitoring & Debugging
+
+### LiteLLM Dashboard
+
+Access metrics and logs:
+
+```bash
+# Port forward to dashboard
+kubectl port-forward svc/litellm 4000:4000
+
+# Access at http://localhost:4000/ui
+# Login with your master_key
+```
+
+### Debug Requests
+
+Enable detailed logging:
+
+```yaml
+litellm_settings:
+  debug: true
+  detailed_debug: true
+  
+general_settings:
+  master_key: sk-key
+  store_model_in_db: true  # Store request history
+```
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Model not found">
+    Check model name matches exactly:
+    ```bash
+    curl http://localhost:4000/v1/models \
+      -H "Authorization: Bearer sk-key"
+    ```
+  </Accordion>
+  
+  <Accordion title="Authentication errors">
+    Verify master key in both LiteLLM and Bytebot:
+    ```bash
+    # Test LiteLLM
+    curl http://localhost:4000/v1/chat/completions \
+      -H "Authorization: Bearer sk-key" \
+      -H "Content-Type: application/json" \
+      -d '{"model": "your-model", "messages": [{"role": "user", "content": "test"}]}'
+    ```
+  </Accordion>
+  
+  <Accordion title="Slow responses">
+    Check latency per provider:
+    ```yaml
+    router_settings:
+      routing_strategy: "latency-based"
+      enable_pre_call_checks: true
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+### Model Selection for Bytebot
+
+Choose models with strong vision capabilities for best results:
+
+<Tabs>
+  <Tab title="Recommended">
+    - Claude 3.5 Sonnet (Best overall)
+    - GPT-4o (Good vision + reasoning)
+    - Gemini 1.5 Pro (Large context)
+  </Tab>
+  <Tab title="Budget Options">
+    - Claude 3.5 Haiku (Fast + cheap)
+    - GPT-4o mini (Good balance)
+    - Gemini 1.5 Flash (Very fast)
+  </Tab>
+  <Tab title="Local Models">
+    - LLaVA (Vision support)
+    - Qwen-VL (Vision support)
+    - CogVLM (Vision support)
+  </Tab>
+</Tabs>
+
+### Performance Optimization
+
+```yaml
+# Optimize for Bytebot workloads
+router_settings:
+  routing_strategy: "latency-based"
+  cooldown_time: 60  # Seconds before retrying failed provider
+  num_retries: 2
+  request_timeout: 600  # 10 minutes for complex tasks
+  
+  # Cache for repeated requests
+  cache: true
+  cache_params:
+    type: "redis"
+    host: "redis"
+    port: 6379
+    ttl: 3600  # 1 hour
+```
+
+### Security
+
+```yaml
+general_settings:
+  master_key: ${LITELLM_MASTER_KEY}
+  
+  # IP allowlist
+  allowed_ips: ["10.0.0.0/8", "172.16.0.0/12"]
+  
+  # Audit logging
+  store_model_in_db: true
+  
+  # Encryption
+  encrypt_keys: true
+  
+  # Headers to forward
+  forward_headers: ["X-Request-ID", "X-User-ID"]
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Supported Models" icon="list" href="https://docs.litellm.ai/docs/providers">
+    Full list of 100+ providers
+  </Card>
+  <Card title="LiteLLM Proxy Docs" icon="server" href="https://docs.litellm.ai/docs/simple_proxy">
+    Official LiteLLM proxy server documentation
+  </Card>
+  <Card title="LiteLLM Docs" icon="book" href="https://docs.litellm.ai">
+    Complete LiteLLM documentation
+  </Card>
+</CardGroup>
+
+<Note>
+  **Pro tip:** Start with a single provider, then add more as needed. LiteLLM makes it easy to switch or combine models without changing Bytebot configuration.
+</Note>

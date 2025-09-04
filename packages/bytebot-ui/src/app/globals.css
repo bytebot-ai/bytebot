@@ -1,0 +1,252 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--color-bytebot-bronze-light-4);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Colors */
+
+  /* Base */
+  --color-bytebot-white: rgba(255, 255, 255, 1);
+  --color-bytebot-transparent: rgba(255, 255, 255, 0);
+  --color-bytebot-black: rgba(0, 0, 0, 1);
+  
+  /* Bronze light */
+  --color-bytebot-bronze-light-1: rgba(251, 249, 249, 1);
+  --color-bytebot-bronze-light-2: rgba(246, 244, 244, 1);
+  --color-bytebot-bronze-light-3: rgba(241, 239, 238, 1);
+  --color-bytebot-bronze-light-4: rgba(236, 233, 232, 1);
+  --color-bytebot-bronze-light-5: rgba(230, 225, 224, 1);
+  --color-bytebot-bronze-light-6: rgba(224, 218, 217, 1);
+  --color-bytebot-bronze-light-7: rgba(218, 212, 210, 1);
+  --color-bytebot-bronze-light-8: rgba(209, 201, 199, 1);
+  --color-bytebot-bronze-light-9: rgba(152, 141, 139, 1);
+  --color-bytebot-bronze-light-10: rgba(141, 130, 128, 1);
+  --color-bytebot-bronze-light-11: rgba(106, 99, 98, 1);
+  --color-bytebot-bronze-light-12: rgba(45, 42, 42, 1);
+  --color-bytebot-bronze-light-a1: rgba(71, 0, 0, 0.02500000037252903);
+  --color-bytebot-bronze-light-a2: rgba(36, 12, 0, 0.04500000178813934);
+  --color-bytebot-bronze-light-a3: rgba(51, 17, 0, 0.06800000369548798);
+  --color-bytebot-bronze-light-a4: rgba(51, 13, 0, 0.09000000357627869);
+  --color-bytebot-bronze-light-a5: rgba(40, 7, 0, 0.11999999731779099);
+  --color-bytebot-bronze-light-a6: rgba(44, 7, 0, 0.15000000596046448);
+  --color-bytebot-bronze-light-a7: rgba(40, 8, 0, 0.17389999330043793);
+  --color-bytebot-bronze-light-a8: rgba(41, 8, 0, 0.2175000011920929);
+  --color-bytebot-bronze-light-a9: rgba(28, 4, 0, 0.45500001311302185);
+  --color-bytebot-bronze-light-a10: rgba(26, 4, 0, 0.49799999594688416);
+  --color-bytebot-bronze-light-a11: rgba(13, 2, 0, 0.6100000143051147);
+  --color-bytebot-bronze-light-a12: rgba(4, 2, 2, 0.8399999737739563);
+
+  /* Bronze dark */
+  --color-bytebot-bronze-dark-1: rgba(19, 16, 16, 1);
+  --color-bytebot-bronze-dark-2: rgba(27, 25, 24, 1);
+  --color-bytebot-bronze-dark-3: rgba(37, 34, 33, 1);
+  --color-bytebot-bronze-dark-4: rgba(45, 41, 40, 1);
+  --color-bytebot-bronze-dark-5: rgba(53, 48, 47, 1);
+  --color-bytebot-bronze-dark-6: rgba(57, 51, 50, 1);
+  --color-bytebot-bronze-dark-7: rgba(77, 70, 69, 1);
+  --color-bytebot-bronze-dark-8: rgba(103, 94, 92, 1);
+  --color-bytebot-bronze-dark-9: rgba(118, 107, 106, 1);
+  --color-bytebot-bronze-dark-10: rgba(132, 121, 119, 1);
+  --color-bytebot-bronze-dark-11: rgba(187, 178, 176, 1);
+  --color-bytebot-bronze-dark-12: rgba(239, 238, 237, 1);
+  --color-bytebot-bronze-dark-a1: rgba(187, 62, 0, 0.0117647061124444);
+  --color-bytebot-bronze-dark-a2: rgba(249, 203, 180, 0.04313725605607033);
+  --color-bytebot-bronze-dark-a3: rgba(249, 214, 202, 0.08627451211214066);
+  --color-bytebot-bronze-dark-a4: rgba(255, 221, 213, 0.11764705926179886);
+  --color-bytebot-bronze-dark-a5: rgba(253, 220, 214, 0.15294118225574493);
+  --color-bytebot-bronze-dark-a6: rgba(252, 222, 217, 0.1679999977350235);
+  --color-bytebot-bronze-dark-a7: rgba(253, 225, 221, 0.2549019753932953);
+  --color-bytebot-bronze-dark-a8: rgba(253, 228, 223, 0.364705890417099);
+  --color-bytebot-bronze-dark-a9: rgba(253, 228, 225, 0.4274509847164154);
+  --color-bytebot-bronze-dark-a10: rgba(253, 231, 227, 0.48627451062202454);
+  --color-bytebot-bronze-dark-a11: rgba(254, 241, 238, 0.7176470756530762);
+  --color-bytebot-bronze-dark-a12: rgba(255, 254, 253, 0.9333333373069763);
+  
+  /* Red light */
+  --color-bytebot-red-light-9: rgba(229, 72, 77, 1);
+  --color-bytebot-red-light-1: rgba(255, 252, 252, 1);
+  --color-bytebot-red-light-2: rgba(255, 247, 247, 1);
+  --color-bytebot-red-light-3: rgba(254, 235, 236, 1);
+  --color-bytebot-red-light-4: rgba(255, 219, 220, 1);
+  --color-bytebot-red-light-5: rgba(255, 205, 206, 1);
+  --color-bytebot-red-light-6: rgba(253, 189, 190, 1);
+  --color-bytebot-red-light-7: rgba(244, 169, 170, 1);
+  --color-bytebot-red-light-8: rgba(235, 142, 144, 1);
+  --color-bytebot-red-light-10: rgba(220, 62, 66, 1);
+  --color-bytebot-red-light-11: rgba(206, 44, 49, 1);
+  --color-bytebot-red-light-12: rgba(100, 23, 35, 1);
+  
+  /* Red dark */
+  --color-bytebot-red-dark-1: rgba(23, 15, 14, 1);
+  --color-bytebot-red-dark-2: rgba(32, 19, 18, 1);
+  --color-bytebot-red-dark-3: rgba(59, 18, 18, 1);
+  --color-bytebot-red-dark-4: rgba(80, 15, 19, 1);
+  --color-bytebot-red-dark-5: rgba(97, 23, 26, 1);
+  --color-bytebot-red-dark-6: rgba(115, 36, 37, 1);
+  --color-bytebot-red-dark-7: rgba(140, 52, 52, 1);
+  --color-bytebot-red-dark-8: rgba(181, 69, 70, 1);
+  --color-bytebot-red-dark-9: rgba(229, 72, 77, 1);
+  --color-bytebot-red-dark-10: rgba(230, 86, 91, 1);
+  --color-bytebot-red-dark-11: rgba(255, 143, 139, 1);
+  --color-bytebot-red-dark-12: rgba(255, 210, 206, 1);
+  
+  /* Green */
+  --color-bytebot-green-3: rgba(232, 247, 228, 1);
+  --color-bytebot-green-4: rgba(218, 242, 211, 1);
+  --color-bytebot-green-5: rgba(200, 234, 190, 1);
+  --color-bytebot-green-6: rgba(178, 223, 165, 1);
+  --color-bytebot-green-7: rgba(148, 208, 130, 1);
+  --color-bytebot-green-8: rgba(103, 188, 77, 1);
+  --color-bytebot-green-9: rgba(77, 175, 41, 1);
+  --color-bytebot-green-10: rgba(68, 162, 32, 1);
+  --color-bytebot-green-11: rgba(43, 128, 0, 1);
+  --color-bytebot-green-12: rgba(33, 61, 24, 1);
+  --color-bytebot-green-2: rgba(245, 251, 244, 1);
+  --color-bytebot-green-1: rgba(251, 254, 250, 1);
+  --color-bytebot-green-a1: rgba(51, 204, 0, 0.019600000232458115);
+  --color-bytebot-green-a2: rgba(24, 163, 0, 0.04309999942779541);
+  --color-bytebot-green-a3: rgba(38, 180, 0, 0.10589999705553055);
+  --color-bytebot-green-a4: rgba(41, 180, 0, 0.17249999940395355);
+  --color-bytebot-green-a5: rgba(40, 173, 0, 0.2549000084400177);
+  --color-bytebot-green-a6: rgba(37, 165, 1, 0.3528999984264374);
+  --color-bytebot-green-a7: rgba(37, 160, 0, 0.490200012922287);
+  --color-bytebot-green-a8: rgba(37, 159, 0, 0.6980000138282776);
+  --color-bytebot-green-a9: rgba(43, 160, 0, 0.8392000198364258);
+  --color-bytebot-green-a10: rgba(41, 149, 0, 0.8744999766349792);
+  --color-bytebot-green-a11: rgba(43, 128, 0, 1);
+  --color-bytebot-green-a12: rgba(10, 41, 0, 0.9059000015258789);
+
+  /* letterSpacing */
+  --letter-spacing-wide: 0.02em;
+  --letter-spacing-normal: 0em;
+  --letter-spacing-narrow: -0.009999999776482582em;
+  --letter-spacing-narrow: -0.01em;
+
+  /* Shadow */
+  --shadow-bytebot: 0px 0px 0px 1.5px #FFF inset;
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.147 0.004 49.25);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.147 0.004 49.25);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.147 0.004 49.25);
+  --primary: oklch(0.216 0.006 56.043);
+  --primary-foreground: oklch(0.985 0.001 106.423);
+  --secondary: oklch(0.97 0.001 106.424);
+  --secondary-foreground: oklch(0.216 0.006 56.043);
+  --muted: oklch(0.97 0.001 106.424);
+  --muted-foreground: oklch(0.553 0.013 58.071);
+  --accent: oklch(0.97 0.001 106.424);
+  --accent-foreground: oklch(0.216 0.006 56.043);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.923 0.003 48.717);
+  --input: oklch(0.923 0.003 48.717);
+  --ring: oklch(0.709 0.01 56.259);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0.001 106.423);
+  --sidebar-foreground: oklch(0.147 0.004 49.25);
+  --sidebar-primary: oklch(0.216 0.006 56.043);
+  --sidebar-primary-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-accent: oklch(0.97 0.001 106.424);
+  --sidebar-accent-foreground: oklch(0.216 0.006 56.043);
+  --sidebar-border: oklch(0.923 0.003 48.717);
+  --sidebar-ring: oklch(0.709 0.01 56.259);
+}
+
+/* .dark {
+  --background: oklch(0.147 0.004 49.25);
+  --foreground: oklch(0.985 0.001 106.423);
+  --card: oklch(0.216 0.006 56.043);
+  --card-foreground: oklch(0.985 0.001 106.423);
+  --popover: oklch(0.216 0.006 56.043);
+  --popover-foreground: oklch(0.985 0.001 106.423);
+  --primary: oklch(0.923 0.003 48.717);
+  --primary-foreground: oklch(0.216 0.006 56.043);
+  --secondary: oklch(0.268 0.007 34.298);
+  --secondary-foreground: oklch(0.985 0.001 106.423);
+  --muted: oklch(0.268 0.007 34.298);
+  --muted-foreground: oklch(0.709 0.01 56.259);
+  --accent: oklch(0.268 0.007 34.298);
+  --accent-foreground: oklch(0.985 0.001 106.423);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.553 0.013 58.071);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.216 0.006 56.043);
+  --sidebar-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-accent: oklch(0.268 0.007 34.298);
+  --sidebar-accent-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.553 0.013 58.071);
+} */
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+.hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}

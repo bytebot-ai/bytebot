@@ -1,0 +1,526 @@
+---
+title: "Computer Action"
+openapi: "POST /computer-use"
+description: "Execute computer actions in the virtual desktop environment"
+---
+
+Execute actions like mouse movements, clicks, keyboard input, and screenshots in the Bytebot desktop environment.
+
+## Request
+
+<ParamField body="action" type="string" required>
+  The type of computer action to perform. Must be one of: `move_mouse`, `trace_mouse`,
+  `click_mouse`, `press_mouse`, `drag_mouse`, `scroll`, `type_keys`, `press_keys`, 
+  `type_text`, `wait`, `screenshot`, `cursor_position`.
+</ParamField>
+
+### Mouse Actions
+
+<Accordion title="move_mouse">
+  <ParamField body="coordinates" type="object" required>
+    The target coordinates to move to.
+    
+    <Expandable title="coordinates properties">
+      <ParamField body="x" type="number" required>
+        X coordinate (horizontal position)
+      </ParamField>
+      <ParamField body="y" type="number" required>
+        Y coordinate (vertical position)
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "move_mouse",
+  "coordinates": {
+    "x": 100,
+    "y": 200
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="trace_mouse">
+  <ParamField body="path" type="array" required>
+    Array of coordinate objects for the mouse path.
+    
+    <Expandable title="path">
+      <ParamField body="0" type="object">
+        <Expandable title="properties">
+          <ParamField body="x" type="number" required>
+            X coordinate
+          </ParamField>
+          <ParamField body="y" type="number" required>
+            Y coordinate
+          </ParamField>
+        </Expandable>
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="holdKeys" type="array">
+  Keys to hold while moving the mouse along the path.
+</ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "trace_mouse",
+  "path": [
+    { "x": 100, "y": 100 },
+    { "x": 150, "y": 150 },
+    { "x": 200, "y": 200 }
+  ],
+  "holdKeys": ["shift"]
+}
+```
+
+</Accordion>
+
+<Accordion title="click_mouse">
+  <ParamField body="coordinates" type="object">
+    The coordinates to click (uses current cursor position if omitted).
+    
+    <Expandable title="coordinates properties">
+      <ParamField body="x" type="number" required>
+        X coordinate (horizontal position)
+      </ParamField>
+      <ParamField body="y" type="number" required>
+        Y coordinate (vertical position)
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="button" type="string" required>
+  Mouse button to click. Must be one of: `left`, `right`, `middle`.
+</ParamField>
+
+{" "}
+
+<ParamField body="clickCount" type="number" required>
+  Number of clicks to perform.
+</ParamField>
+
+{" "}
+
+<ParamField body="holdKeys" type="array">
+  Keys to hold while clicking (e.g., ['ctrl', 'shift'])
+  <Expandable title="holdKeys">
+    <ParamField body="0" type="string">
+      Key name
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "click_mouse",
+  "coordinates": {
+    "x": 150,
+    "y": 250
+  },
+  "button": "left",
+  "clickCount": 2
+}
+```
+
+</Accordion>
+
+<Accordion title="press_mouse">
+  <ParamField body="coordinates" type="object">
+    The coordinates to press/release (uses current cursor position if omitted).
+    
+    <Expandable title="coordinates properties">
+      <ParamField body="x" type="number" required>
+        X coordinate (horizontal position)
+      </ParamField>
+      <ParamField body="y" type="number" required>
+        Y coordinate (vertical position)
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="button" type="string" required>
+  Mouse button to press/release. Must be one of: `left`, `right`, `middle`.
+</ParamField>
+
+{" "}
+
+<ParamField body="press" type="string" required>
+  Whether to press or release the button. Must be one of: `up`, `down`.
+</ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "press_mouse",
+  "coordinates": {
+    "x": 150,
+    "y": 250
+  },
+  "button": "left",
+  "press": "down"
+}
+```
+
+</Accordion>
+
+<Accordion title="drag_mouse">
+  <ParamField body="path" type="array" required>
+    Array of coordinate objects for the drag path.
+    
+    <Expandable title="path">
+      <ParamField body="0" type="object">
+        <Expandable title="properties">
+          <ParamField body="x" type="number" required>
+            X coordinate
+          </ParamField>
+          <ParamField body="y" type="number" required>
+            Y coordinate
+          </ParamField>
+        </Expandable>
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="button" type="string" required>
+  Mouse button to use for dragging. Must be one of: `left`, `right`, `middle`.
+</ParamField>
+
+{" "}
+
+<ParamField body="holdKeys" type="array">
+  Keys to hold while dragging.
+</ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "drag_mouse",
+  "path": [
+    { "x": 100, "y": 100 },
+    { "x": 200, "y": 200 }
+  ],
+  "button": "left"
+}
+```
+
+</Accordion>
+
+<Accordion title="scroll">
+  <ParamField body="coordinates" type="object">
+    The coordinates to scroll at (uses current cursor position if omitted).
+    
+    <Expandable title="coordinates properties">
+      <ParamField body="x" type="number" required>
+        X coordinate
+      </ParamField>
+      <ParamField body="y" type="number" required>
+        Y coordinate
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="direction" type="string" required>
+  Scroll direction. Must be one of: `up`, `down`, `left`, `right`.
+</ParamField>
+
+{" "}
+
+<ParamField body="scrollCount" type="number" required>
+  Number of scroll steps to perform.
+</ParamField>
+
+{" "}
+
+<ParamField body="holdKeys" type="array">
+  Keys to hold while scrolling.
+</ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "scroll",
+  "direction": "down",
+  "scrollCount": 5
+}
+```
+
+</Accordion>
+
+### Keyboard Actions
+
+<Accordion title="type_keys">
+  <ParamField body="keys" type="array" required>
+    Array of keys to type in sequence.
+    <Expandable title="keys">
+      <ParamField body="0" type="string">
+        Key name
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="delay" type="number">
+  Delay between key presses in milliseconds.
+</ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "type_keys",
+  "keys": ["a", "b", "c", "enter"],
+  "delay": 50
+}
+```
+
+</Accordion>
+
+<Accordion title="press_keys">
+  <ParamField body="keys" type="array" required>
+    Array of keys to press or release.
+    <Expandable title="keys">
+      <ParamField body="0" type="string">
+        Key name
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="press" type="string" required>
+  Whether to press or release the keys. Must be one of: `up`, `down`.
+</ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "press_keys",
+  "keys": ["ctrl", "shift", "esc"],
+  "press": "down"
+}
+```
+
+</Accordion>
+
+<Accordion title="type_text">
+  <ParamField body="text" type="string" required>
+    The text string to type.
+  </ParamField>
+
+{" "}
+
+<ParamField body="delay" type="number">
+  Delay between characters in milliseconds.
+</ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "type_text",
+  "text": "Hello, Bytebot!",
+  "delay": 50
+}
+```
+
+</Accordion>
+
+<Accordion title="paste_text">
+  <ParamField body="text" type="string" required>
+    The text to paste. Useful for special characters that aren't on the standard keyboard.
+  </ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "paste_text",
+  "text": "Special characters: ©®™€¥£ émojis 🎉"
+}
+```
+
+</Accordion>
+
+### System Actions
+
+<Accordion title="wait">
+  <ParamField body="duration" type="number" required>
+    Wait duration in milliseconds.
+  </ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "wait",
+  "duration": 2000
+}
+```
+
+</Accordion>
+
+<Accordion title="screenshot">
+No parameters required.
+
+**Example Request**
+
+```json
+{
+  "action": "screenshot"
+}
+```
+
+</Accordion>
+
+<Accordion title="cursor_position">
+No parameters required.
+
+**Example Request**
+
+```json
+{
+  "action": "cursor_position"
+}
+```
+
+</Accordion>
+
+<Accordion title="application">
+  <ParamField body="application" type="string" required>
+    The application to switch to. Available options: `firefox`, `1password`, `thunderbird`, `vscode`, `terminal`, `desktop`, `directory`.
+  </ParamField>
+
+**Example Request**
+
+```json
+{
+  "action": "application",
+  "application": "firefox"
+}
+```
+
+**Available Applications:**
+- `firefox` - Mozilla Firefox web browser
+- `1password` - Password manager
+- `thunderbird` - Email client
+- `vscode` - Visual Studio Code editor
+- `terminal` - Terminal/console application
+- `desktop` - Switch to desktop
+- `directory` - File manager/directory browser
+
+</Accordion>
+
+## Response
+
+Responses vary based on the action performed:
+
+### Default Response
+
+Most actions return a simple success response:
+
+```json
+{
+  "success": true
+}
+```
+
+### Screenshot Response
+
+Returns the screenshot as a base64 encoded string:
+
+```json
+{
+  "success": true,
+  "data": {
+    "image": "base64_encoded_image_data"
+  }
+}
+```
+
+### Cursor Position Response
+
+Returns the current cursor position:
+
+```json
+{
+  "success": true,
+  "data": {
+    "x": 123,
+    "y": 456
+  }
+}
+```
+
+### Error Response
+
+```json
+{
+  "success": false,
+  "error": "Error message"
+}
+```
+
+### Code Examples
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "move_mouse", "coordinates": {"x": 100, "y": 200}}'
+```
+
+```python Python
+import requests
+
+def control_computer(action, **params):
+    url = "http://localhost:9990/computer-use"
+    data = {"action": action, **params}
+    response = requests.post(url, json=data)
+    return response.json()
+
+# Move the mouse
+result = control_computer("move_mouse", coordinates={"x": 100, "y": 100})
+print(result)
+```
+
+```javascript JavaScript
+const axios = require("axios");
+
+async function controlComputer(action, params = {}) {
+  const url = "http://localhost:9990/computer-use";
+  const data = { action, ...params };
+  const response = await axios.post(url, data);
+  return response.data;
+}
+
+// Move mouse example
+controlComputer("move_mouse", { coordinates: { x: 100, y: 100 } })
+  .then((result) => console.log(result))
+  .catch((error) => console.error("Error:", error));
+```
+
+</CodeGroup>

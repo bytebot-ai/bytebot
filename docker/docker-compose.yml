@@ -1,0 +1,86 @@
+name: bytebot
+
+services:
+  bytebot-desktop:
+    # Build from source
+    build:
+      context: ../packages/
+      dockerfile: bytebotd/Dockerfile
+    # Use pre-built image
+    image: ghcr.io/bytebot-ai/bytebot-desktop:edge
+    shm_size: "2g"
+    container_name: bytebot-desktop
+    restart: unless-stopped
+    hostname: computer
+    privileged: true
+    ports:
+      - "9990:9990" # bytebotd service & noVNC
+    environment:
+      - DISPLAY=:0
+    networks:
+      - bytebot-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: bytebot-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=bytebotdb
+    networks:
+      - bytebot-network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  bytebot-agent:
+    build:
+      context: ../packages/
+      dockerfile: bytebot-agent/Dockerfile
+    # Use pre-built image
+    image: ghcr.io/bytebot-ai/bytebot-agent:edge
+    container_name: bytebot-agent
+    restart: unless-stopped
+    ports:
+      - "9991:9991"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/bytebotdb}
+      - BYTEBOT_DESKTOP_BASE_URL=${BYTEBOT_DESKTOP_BASE_URL:-http://bytebot-desktop:9990}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - postgres
+    networks:
+      - bytebot-network
+
+  bytebot-ui:
+    build:
+      context: ../packages/
+      dockerfile: bytebot-ui/Dockerfile
+      args:
+        - BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL:-http://bytebot-agent:9991}
+        - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-desktop:9990/websockify}
+    # Use pre-built image
+    image: ghcr.io/bytebot-ai/bytebot-ui:edge
+    container_name: bytebot-ui
+    restart: unless-stopped
+    ports:
+      - "9992:9992"
+    environment:
+      - NODE_ENV=production
+      - BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL:-http://bytebot-agent:9991}
+      - BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL:-http://bytebot-desktop:9990/websockify}
+    depends_on:
+      - bytebot-agent
+    networks:
+      - bytebot-network
+
+networks:
+  bytebot-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<channel name="xfce4-appfinder" version="1.0">
+  <property name="last" type="empty">
+    <property name="window-height" type="int" value="400"/>
+    <property name="window-width" type="int" value="400"/>
+    <property name="pane-position" type="int" value="180"/>
+  </property>
+</channel>

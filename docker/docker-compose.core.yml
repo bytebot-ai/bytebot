@@ -1,0 +1,19 @@
+name: bytebot
+
+services:
+  bytebot-desktop:
+    # Build from source
+    build:
+      context: ../packages/
+      dockerfile: bytebotd/Dockerfile
+    # Use pre-built image
+    image: ghcr.io/bytebot-ai/bytebot-desktop:edge
+    shm_size: "2g"
+    container_name: bytebot-desktop
+    restart: unless-stopped
+    hostname: computer
+    privileged: true
+    ports:
+      - "9990:9990" # bytebotd service & noVNC
+    environment:
+      - DISPLAY=:0

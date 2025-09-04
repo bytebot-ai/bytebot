@@ -1,0 +1,150 @@
+---
+title: 'Task UI'
+description: 'Documentation for the Bytebot Task UI'
+---
+
+## Bytebot Task UI
+
+The Bytebot Task UI provides a web-based interface for interacting with the Bytebot agent system. It combines a action feed with an embedded noVNC viewer, allowing you to watch it perform task on the desktop in real-time.
+
+<img src="/static/chat-ui-overview.png" alt="Bytebot Task Detail" className="w-full max-w-4xl" />
+
+## Accessing the UI
+
+When running the full Bytebot agent system, the Task UI is available at:
+
+```
+http://localhost:9992
+```
+
+## UI Components
+
+### Task Management Panel
+
+The task management panel allows you to:
+
+- Create new tasks
+- View existing tasks
+- See task status and priority
+- Select a task to work on
+
+<img src="/static/ui-task-management.png" alt="Task Management Panel" className="w-full max-w-4xl" />
+
+### Task Interface
+
+The main task interface provides:
+
+- Task history with the agent
+- Support for markdown formatting in messages
+- Automatic scrolling to new messages
+
+### Desktop Viewer
+
+The embedded noVNC viewer displays:
+
+- Real-time view of the desktop environment
+- Visual feedback of agent actions
+- Option to expand to take over the desktop
+- Connection status indicator
+
+## Features
+
+### Task Creation
+
+To create a new task:
+
+1. Enter a description for the task
+2. Click "Start Task" button (or press Enter)
+
+### Conversation Controls
+
+The task interface supports:
+
+- Text messages with markdown formatting
+- Viewing image content in messages
+- Displaying tool use actions
+- Showing tool results
+
+### Desktop Interaction
+
+While primarily for viewing, the desktop panel allows:
+
+- Taking over the desktop
+- Real-time monitoring of agent actions
+
+## Message Types
+
+The task interface displays different types of messages based on Bytebot's content block structure:
+
+- **User Messages**: Your instructions and queries
+- **Assistant Messages**: Responses from the agent, which may include:
+  - **Text Content Blocks**: Markdown-formatted text responses
+  - **Image Content Blocks**: Images generated or captured
+  - **Tool Use Content Blocks**: Computer actions being performed
+  - **Tool Result Content Blocks**: Results of computer actions
+
+The message content structure follows this format:
+
+```typescript
+interface Message {
+  id: string;
+  content: MessageContentBlock[];
+  role: Role; // "USER" or "ASSISTANT"
+  createdAt?: string;
+}
+
+interface MessageContentBlock {
+  type: string;
+  [key: string]: any;
+}
+
+interface TextContentBlock extends MessageContentBlock {
+  type: "text";
+  text: string;
+}
+
+interface ImageContentBlock extends MessageContentBlock {
+  type: "image";
+  source: {
+    type: "base64";
+    media_type: string;
+    data: string;
+  };
+}
+```
+
+## Technical Details
+
+The Bytebot Task UI is built with:
+
+- **Next.js**: React framework for the frontend
+- **Tailwind CSS**: For styling
+- **ReactMarkdown**: For rendering markdown content
+- **noVNC**: For the embedded desktop viewer
+
+## Troubleshooting
+
+### Connection Issues
+
+If you experience connection issues:
+
+1. Ensure all Bytebot services are running
+2. Check that ports 9990, 9991, and 9992 are accessible
+3. Try refreshing the browser
+4. Check browser console for error messages
+
+### Desktop Viewer Issues
+
+If the desktop viewer is not displaying:
+
+1. Ensure the Bytebot container is running
+2. Check that the noVNC service is accessible at port 9990
+
+### Message Display Issues
+
+If messages are not displaying correctly:
+
+1. Check that the message content is properly formatted
+2. Ensure the agent service is processing task correctly
+3. Check the browser console for any rendering errors
+4. Try refreshing the browser

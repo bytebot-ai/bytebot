@@ -1,0 +1,56 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/bytebot-ai/bytebot-ui
+  tag: edge
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 9992
+  targetPort: 9992
+  annotations: {}
+
+resources:
+  limits:
+    memory: "1Gi"
+    cpu: "500m"
+  requests:
+    memory: "512Mi"
+    cpu: "250m"
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+env:
+  NODE_ENV: "production"
+  BYTEBOT_AGENT_BASE_URL: "http://bytebot-agent:9991"
+  BYTEBOT_DESKTOP_VNC_URL: "http://bytebot-desktop:9990/websockify"
+
+config:
+  agentBaseUrl: "http://bytebot-agent:9991"
+  desktopVncUrl: "http://bytebot-desktop:9990/websockify"
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: bytebot.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80

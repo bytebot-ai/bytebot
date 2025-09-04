@@ -1,0 +1,48 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-bytebot
+  labels:
+    app.kubernetes.io/name: bytebot
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bytebot-ui
+                port:
+                  number: 9992
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: bytebot-agent
+                port:
+                  number: 9991
+          - path: /vnc
+            pathType: Prefix
+            backend:
+              service:
+                name: bytebot-desktop
+                port:
+                  number: 9990
+{{- end }}

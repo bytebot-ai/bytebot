@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Thunderbird Mail
+Comment=Read and send emails with Thunderbird
+Exec=/usr/bin/thunderbird %U
+Icon=thunderbird
+Path=
+Terminal=false
+StartupNotify=true
+Categories=Network;Email;
+MimeType=x-scheme-handler/mailto;application/x-xpinstall;message/rfc822;

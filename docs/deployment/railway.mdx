@@ -1,0 +1,89 @@
+---
+title: "Deploying Bytebot on Railway"
+description: "Comprehensive guide to deploying the full Bytebot stack on Railway using the official 1-click template"
+---
+
+> **TL;DR –** Click the button below, add your AI API key (Anthropic, OpenAI, or Google), and your personal Bytebot instance will be live in ~2 minutes.
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/bytebot?referralCode=L9lKXQ)
+
+---
+
+## Why Railway?
+
+Railway provides a zero-ops PaaS experience with private networking and per-service logs that perfectly fits Bytebot’s multi-container architecture. The official template wires every service together using the latest container images pushed to the `edge` branch.
+
+---
+
+## What Gets Deployed
+
+| Service          | Container Image (edge)                                               | Port | Exposed? | Purpose                              |
+| ---------------- | -------------------------------------------------------------------- | ---- | -------- | ------------------------------------ |
+| **bytebot-ui**   | `ghcr.io/bytebot-ai/bytebot-ui:edge`                                 | 9992 | **Yes**  | Next.js web UI rendered to the world |
+| **bytebot-agent**| `ghcr.io/bytebot-ai/bytebot-agent:edge`                              | 9991 | No       | Task orchestration & LLM calls       |
+| **bytebot-desktop**| `ghcr.io/bytebot-ai/bytebot-desktop:edge`                          | 9990 | No       | Containerised Ubuntu + XFCE desktop  |
+| **postgres**     | `postgres:14-alpine`                                                 | 5432 | No       | Persistence layer                    |
+
+All internal traffic flows through Railway’s [private networking](https://docs.railway.com/guides/private-networking). Only `bytebot-ui` is assigned a public domain.
+
+---
+
+## Step-by-Step Walk-through
+
+<Steps>
+  <Step title="1. Open the Template">
+    Click the **Deploy on Railway** button above or visit [https://railway.com/deploy/bytebot?referralCode=L9lKXQ](https://railway.com/deploy/bytebot?referralCode=L9lKXQ).
+  </Step>
+  <Step title="2. Configure Environment">
+    For the bytebot-agent resource, add your AI API key (choose at least one):
+    - **Anthropic**: Paste into `ANTHROPIC_API_KEY` for Claude models
+    - **OpenAI**: Paste into `OPENAI_API_KEY` for GPT models
+    - **Google**: Paste into `GEMINI_API_KEY` for Gemini models
+    
+    Keep other defaults as is.
+  </Step>
+  <Step title="3. Kick off the Deployment">
+    Press **Deploy**. Railway will pull the pre-built images, create the Postgres database and link all services on a private network.
+  </Step>
+  <Step title="4. Launch Bytebot">
+    When the build logs show *"bytebot-ui: ready"*, click the generated URL (e.g. `https://bytebot-ui-prod.up.railway.app`). You should see the task interface. Create a task and watch the desktop stream!  
+    _Tip: You can tail logs for each service from the Railway dashboard._
+  </Step>
+</Steps>
+
+<Note>
+  The first deploy downloads several container layers – expect ~2 minutes. Subsequent redeploys are much faster.
+</Note>
+
+---
+
+## Private Networking & Security
+
+• **Private networking** ensures that the agent, desktop and database can communicate securely without exposing their ports to the internet.  
+• **Public exposure** is limited to the UI which serves static assets and proxies WebSocket traffic.  
+• **Add authentication** by placing the UI behind Railway’s built-in password protection or an external provider (e.g. Cloudflare Access, Auth0, OAuth proxy).  
+• You can also point a custom domain to the UI from the Railway dashboard and enable Cloudflare for WAF/CDN protection.
+
+---
+
+## Customisation & Scaling
+
+1. **Change images** – Fork the repo, push your own images and edit the template’s `Dockerfile` references.  
+2. **Increase resources** – Each service has an independent CPU/RAM slider in Railway. Bump up the desktop or agent if you plan heavy automations.  
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+| ------- | ------------ | ---- |
+| Web UI shows “connecting…” | Desktop not ready or private networking mis-config | Wait for `bytebot-desktop` container to finish starting, or restart service |
+| Agent errors `401` or `403` | Missing/invalid API key | Re-enter your AI provider's API key in Railway variables |
+| Slow desktop video | Free Railway plan throttling | Upgrade plan or reduce screen resolution in desktop settings |
+
+---
+
+## Next Steps
+
+• Explore the [REST APIs](/api-reference/introduction) to script tasks programmatically.  
+• Join our [Discord](https://discord.com/invite/d9ewZkWPTP) community for support and showcase your automations!

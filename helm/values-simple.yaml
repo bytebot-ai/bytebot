@@ -1,0 +1,18 @@
+# Simple Bytebot configuration example
+# Copy this file and add your API key(s)
+
+bytebot-agent:
+  # Configure at least one API key
+  apiKeys:
+    anthropic:
+      value: "sk-ant-your-key-here"
+    
+    # Optional: Add more providers
+    # openai:
+    #   value: "sk-your-key-here"
+    # gemini:
+    #   value: "your-key-here"
+
+# That's it! The defaults handle everything else.
+# 
+# For more options, see the full values.yaml file.
