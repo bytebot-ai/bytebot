@@ -5,6 +5,8 @@ import { AnthropicModule } from '../anthropic/anthropic.module';
 import { AgentProcessor } from './agent.processor';
 import { ConfigModule } from '@nestjs/config';
 import { AgentScheduler } from './agent.scheduler';
+import { PlannerService } from './planner.service';
+import { ReflectorService } from './reflector.service';
 import { InputCaptureService } from './input-capture.service';
 import { OpenAIModule } from '../openai/openai.module';
 import { GoogleModule } from '../google/google.module';
@@ -28,7 +30,9 @@ import { ProxyModule } from 'src/proxy/proxy.module';
     AgentScheduler,
     InputCaptureService,
     AgentAnalyticsService,
+    PlannerService,
+    ReflectorService,
   ],
-  exports: [AgentProcessor],
+  exports: [AgentProcessor, PlannerService, ReflectorService],
 })
 export class AgentModule {}

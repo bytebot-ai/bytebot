@@ -15,7 +15,7 @@
     "start:debug": "npm run build --prefix ../shared && nest start --debug --watch",
     "start:prod": "npm run build --prefix ../shared && npx prisma migrate deploy && npx prisma generate && node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
+    "test": "npm run build --prefix ../shared && jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
@@ -33,7 +33,7 @@
     "@nestjs/platform-socket.io": "^11.1.1",
     "@nestjs/schedule": "^6.0.0",
     "@nestjs/websockets": "^11.1.1",
-    "@prisma/client": "^6.6.0",
+    "@prisma/client": "^6.15.0",
     "@thallesp/nestjs-better-auth": "^1.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
@@ -62,6 +62,7 @@
     "globals": "^15.14.0",
     "jest": "^29.7.0",
     "prettier": "^3.4.2",
+    "prisma": "^6.15.0",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
@@ -77,16 +78,19 @@
       "json",
       "ts"
     ],
-    "rootDir": "src",
+    "rootDir": ".",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "src/**/*.(t|j)s"
     ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "coverageDirectory": "./coverage",
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@bytebot/shared(|/.*)$": "<rootDir>/../shared/src$1"
+    }
   },
   "overrides": {
     "openai": {
