@@ -56,6 +56,8 @@ model Task {
   queuedAt      DateTime?
   error         String?
   result        Json?
+  plan          Json?
+  planStep      Int           @default(0)
   // Example: 
   // { "provider": "anthropic", "name": "claude-opus-4-20250514", "title": "Claude Opus 4" }
   model         Json
