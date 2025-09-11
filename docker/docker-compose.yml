@@ -39,8 +39,8 @@ services:
     build:
       context: ../packages/
       dockerfile: bytebot-agent/Dockerfile
-    # Use pre-built image
-    image: ghcr.io/bytebot-ai/bytebot-agent:edge
+    # Build local image to pick up repo changes
+    # image removed to avoid pulling pre-built image
     container_name: bytebot-agent
     restart: unless-stopped
     ports:
