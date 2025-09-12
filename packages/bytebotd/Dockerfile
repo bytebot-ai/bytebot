@@ -176,6 +176,14 @@ RUN apt-get update && \
 
 COPY ./shared/ /bytebot/shared/
 COPY ./bytebotd/ /bytebot/bytebotd/
+
+# Change ownership of app directory
+RUN chown -R bytebot:bytebot /home/user
+
+# Create non-root user
+RUN groupadd -r bytebot --gid=1001 && \
+    useradd -r -g bytebot --uid=1001 --home-dir=/app --shell=/bin/bash bytebot
+
 WORKDIR /bytebot/bytebotd
 RUN npm install --build-from-source
 RUN npm rebuild uiohook-napi --build-from-source
@@ -246,5 +254,17 @@ WORKDIR /home/user
 # - Port 9990: bytebotd and external noVNC websocket
 EXPOSE 9990
 
+
+# Create non-root user for running the application
+RUN groupadd -r -g 10001 appuser && \
+    useradd -r -u 10001 -g appuser -d /home/appuser -s /sbin/nologin -c "Application user" appuser && \
+    mkdir -p /home/appuser && \
+    chown -R appuser:appuser /home/appuser
+
+# Switch to non-root user
 # Start supervisor to manage all services
+
+# Switch to non-root user
+USER bytebot
+
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf", "-n"]
