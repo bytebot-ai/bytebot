@@ -1,0 +1,510 @@
+---
+title: "LiteLLM 集成"
+description: "通过 LiteLLM 代理在 Bytebot 中使用任何 LLM 提供商"
+---
+
+# 通过 LiteLLM 将任意 LLM 连接到 Bytebot
+
+LiteLLM 作为一个统一代理，让您可以在 Bytebot 中使用 100 多个 LLM 提供商——包括 Azure OpenAI、AWS Bedrock、Anthropic、Hugging Face、Ollama 等。本指南将向您展示如何将 LiteLLM 与 Bytebot 一起设置。
+
+## 为何使用 LiteLLM？
+
+<CardGroup cols={2}>
+  <Card title="100+ LLM 提供商" icon="plug">
+    使用 Azure、AWS、GCP、Anthropic、OpenAI、Cohere 以及本地模型
+  </Card>
+  <Card title="成本追踪" icon="dollar-sign">
+    在一个地方监控所有提供商的花费
+  </Card>
+  <Card title="负载均衡" icon="scale-balanced">
+    在多个模型和提供商之间分发请求
+  </Card>
+  <Card title="备用模型" icon="shield">
+    当主模型不可用时自动故障转移
+  </Card>
+</CardGroup>
+
+## 使用 Bytebot 内置的 LiteLLM 代理快速入门
+
+Bytebot 包含一个预配置的 LiteLLM 代理服务，可轻松使用任何 LLM 提供商。以下是设置方法：
+
+<Steps>
+  <Step title="使用带代理的 Docker Compose">
+    最简单的方法是使用启用代理的 Docker Compose 文件：
+    
+    ```bash
+    # 克隆 Bytebot
+    git clone https://github.com/bytebot-ai/bytebot.git
+    cd bytebot
+    
+    # 在 docker/.env 中设置您的 API 密钥
+    cat > docker/.env << EOF
+    # 添加任意组合的这些密钥
+    ANTHROPIC_API_KEY=sk-ant-your-key-here
+    OPENAI_API_KEY=sk-your-key-here  
+    GEMINI_API_KEY=your-key-here
+    EOF
+    
+    # 使用 LiteLLM 代理启动 Bytebot
+    docker-compose -f docker/docker-compose.proxy.yml up -d
+    ```
+    
+    这会自动：
+    - 在端口 4000 上启动 `bytebot-llm-proxy` 服务
+    - 通过 `BYTEBOT_LLM_PROXY_URL` 配置代理供代理使用
+    - 使所有配置的模型都可通过代理使用
+  </Step>
+  
+  <Step title="自定义模型配置">
+    要添加自定义模型或提供商，请编辑 LiteLLM 配置：
+    
+    ```yaml
+    # packages/bytebot-llm-proxy/litellm-config.yaml
+    model_list:
+      # 添加 Azure OpenAI
+      - model_name: azure-gpt-4o
+        litellm_params:
+          model: azure/gpt-4o-deployment
+          api_base: https://your-resource.openai.azure.com/
+          api_key: os.environ/AZURE_API_KEY
+          api_version: "2024-02-15-preview"
+      
+      # 添加 AWS Bedrock
+      - model_name: claude-bedrock
+        litellm_params:
+          model: bedrock/anthropic.claude-3-5-sonnet
+          aws_region_name: us-east-1
+      
+      # 通过 Ollama 添加本地模型
+      - model_name: local-llama
+        litellm_params:
+          model: ollama/llama3:70b
+          api_base: http://host.docker.internal:11434
+    ```
+    
+    然后重新构建：
+    ```bash
+    docker-compose -f docker/docker-compose.proxy.yml up -d --build
+    ```
+  </Step>
+  
+  <Step title="验证模型可用性">
+    Bytebot 代理会自动查询代理以获取可用模型：
+    
+    ```bash
+    # 通过 Bytebot API 检查可用模型
+    curl http://localhost:9991/tasks/models
+    
+    # 或直接从 LiteLLM 代理获取
+    curl http://localhost:4000/model/info
+    ```
+    
+    UI 将在模型选择器中显示所有可用模型。
+  </Step>
+</Steps>
+
+## 工作原理
+
+### 架构
+
+```mermaid
+graph LR
+    A[Bytebot UI] -->|Select Model| B[Bytebot Agent]
+    B -->|BYTEBOT_LLM_PROXY_URL| C[LiteLLM Proxy :4000]
+    C -->|Route Request| D[Anthropic API]
+    C -->|Route Request| E[OpenAI API]  
+    C -->|Route Request| F[Google API]
+    C -->|Route Request| G[Any Provider]
+```
+
+### 核心组件
+
+1. **bytebot-llm-proxy 服务**: 在 Docker 中运行的 LiteLLM 实例，具备以下特性：
+   - 在 Bytebot 网络内的 4000 端口运行
+   - 使用 `packages/bytebot-llm-proxy/litellm-config.yaml` 中的配置
+   - 从环境变量继承 API 密钥
+
+2. **智能体集成**: Bytebot 智能体：
+   - 检查 `BYTEBOT_LLM_PROXY_URL` 环境变量
+   - 若已设置，则通过 `/model/info` 端点查询代理以获取可用模型
+   - 将所有 LLM 请求通过代理路由
+
+3. **预配置模型**: 开箱即用支持：
+   - Anthropic: Claude Opus 4, Claude Sonnet 4
+   - OpenAI: GPT-4.1, GPT-4o
+   - Google: Gemini 2.5 Pro, Gemini 2.5 Flash
+
+## 供应商配置
+
+### Azure OpenAI
+
+```yaml
+model_list:
+  - model_name: azure-gpt-4o
+    litellm_params:
+      model: azure/gpt-4o-deployment-name
+      api_base: https://your-resource.openai.azure.com/
+      api_key: your-azure-key
+      api_version: "2024-02-15-preview"
+  
+  - model_name: azure-gpt-4o-vision
+    litellm_params:
+      model: azure/gpt-4o-deployment-name
+      api_base: https://your-resource.openai.azure.com/
+      api_key: your-azure-key
+      api_version: "2024-02-15-preview"
+      supports_vision: true
+```
+
+### AWS Bedrock
+
+```yaml
+model_list:
+  - model_name: claude-bedrock
+    litellm_params:
+      model: bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0
+      aws_region_name: us-east-1
+      # Uses AWS credentials from environment
+  
+  - model_name: llama-bedrock
+    litellm_params:
+      model: bedrock/meta.llama3-70b-instruct-v1:0
+      aws_region_name: us-east-1
+```
+
+### Google Vertex AI
+
+```yaml
+model_list:
+  - model_name: gemini-vertex
+    litellm_params:
+      model: vertex_ai/gemini-1.5-pro
+      vertex_project: your-gcp-project
+      vertex_location: us-central1
+      # Uses GCP credentials from environment
+```
+
+### 本地模型 (Ollama)
+
+```yaml
+model_list:
+  - model_name: local-llama
+    litellm_params:
+      model: ollama/llama3:70b
+      api_base: http://ollama:11434
+  
+  - model_name: local-mixtral
+    litellm_params:
+      model: ollama/mixtral:8x7b
+      api_base: http://ollama:11434
+```
+
+### Hugging Face
+
+```yaml
+model_list:
+  - model_name: hf-llama
+    litellm_params:
+      model: huggingface/meta-llama/Llama-3-70b-chat-hf
+      api_key: hf_your_token
+```
+
+## 高级功能
+
+### 负载均衡
+
+在多个供应商之间分发请求：
+
+```yaml
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: gpt-4o
+      api_key: sk-openai-key
+  
+  - model_name: gpt-4o  # Same name for load balancing
+    litellm_params:
+      model: azure/gpt-4o
+      api_base: https://azure.openai.azure.com/
+      api_key: azure-key
+
+router_settings:
+  routing_strategy: "least-busy"  # or "round-robin", "latency-based"
+```
+
+### 备用模型
+
+配置自动故障转移：
+
+```yaml
+model_list:
+  - model_name: primary-model
+    litellm_params:
+      model: claude-3-5-sonnet-20241022
+      api_key: sk-ant-key
+  
+  - model_name: fallback-model
+    litellm_params:
+      model: gpt-4o
+      api_key: sk-openai-key
+
+router_settings:
+  model_group_alias:
+    "smart-model": ["primary-model", "fallback-model"]
+  
+# Use "smart-model" in Bytebot config
+```
+
+### 成本控制
+
+设置支出限制并跟踪使用情况：
+
+```yaml
+general_settings:
+  master_key: sk-litellm-master
+  database_url: "postgresql://user:pass@localhost:5432/litellm"
+  
+  # Budget limits
+  max_budget: 100  # $100 monthly limit
+  budget_duration: "30d"
+  
+  # Per-model limits
+  model_max_budget:
+    gpt-4o: 50
+    claude-3-5-sonnet: 50
+
+litellm_settings:
+  callbacks: ["langfuse"]  # For detailed tracking
+```
+
+### 速率限制
+
+防止 API 过度使用：
+
+```yaml
+model_list:
+  - model_name: rate-limited-gpt
+    litellm_params:
+      model: gpt-4o
+      api_key: sk-key
+      rpm: 100  # Requests per minute
+      tpm: 100000  # Tokens per minute
+```
+
+## 替代方案：外部 LiteLLM 代理
+
+如果您希望单独运行 LiteLLM 或已有现有的 LiteLLM 部署：
+
+### 选项 1：修改 docker-compose.yml
+
+```yaml
+# docker-compose.yml (without built-in proxy)
+services:
+  bytebot-agent:
+    environment:
+      # Point to your external LiteLLM instance
+      - BYTEBOT_LLM_PROXY_URL=http://your-litellm-server:4000
+    # ... rest of config
+```
+
+### 选项 2：使用环境变量
+
+```bash
+# Set the proxy URL before starting
+export BYTEBOT_LLM_PROXY_URL=http://your-litellm-server:4000
+
+# Start normally
+docker-compose -f docker/docker-compose.yml up -d
+```
+
+### 选项 3：独立运行 LiteLLM
+
+```bash
+# Run your own LiteLLM instance
+docker run -d \
+  --name litellm-external \
+  -p 4000:4000 \
+  -v $(pwd)/custom-config.yaml:/app/config.yaml \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  ghcr.io/berriai/litellm:main \
+  --config /app/config.yaml
+
+# Then start Bytebot with:
+export BYTEBOT_LLM_PROXY_URL=http://localhost:4000
+docker-compose up -d
+```
+
+## Kubernetes 部署
+
+使用 Helm 进行部署：
+
+```yaml
+# litellm-values.yaml
+replicaCount: 2
+
+image:
+  repository: ghcr.io/berriai/litellm
+  tag: main
+
+service:
+  type: ClusterIP
+  port: 4000
+
+config:
+  model_list:
+    - model_name: claude-3-5-sonnet
+      litellm_params:
+        model: claude-3-5-sonnet-20241022
+        api_key: ${ANTHROPIC_API_KEY}
+  
+  general_settings:
+    master_key: ${LITELLM_MASTER_KEY}
+
+# Then in Bytebot values.yaml:
+agent:
+  openai:
+    enabled: true
+    apiKey: "${LITELLM_MASTER_KEY}"
+    baseUrl: "http://litellm:4000/v1"
+    model: "claude-3-5-sonnet"
+```
+
+## 监控与调试
+
+### LiteLLM 仪表盘
+
+访问指标和日志：
+
+```bash
+# Port forward to dashboard
+kubectl port-forward svc/litellm 4000:4000
+
+# Access at http://localhost:4000/ui
+# Login with your master_key
+```
+
+### 调试请求
+
+启用详细日志记录：
+
+```yaml
+litellm_settings:
+  debug: true
+  detailed_debug: true
+  
+general_settings:
+  master_key: sk-key
+  store_model_in_db: true  # Store request history
+```
+
+### 常见问题
+
+<AccordionGroup>
+  <Accordion title="模型未找到">
+    检查模型名称是否完全匹配：
+    ```bash
+    curl http://localhost:4000/v1/models \
+      -H "Authorization: Bearer sk-key"
+    ```
+  </Accordion>
+  
+  <Accordion title="认证错误">
+    验证 LiteLLM 和 Bytebot 中的主密钥：
+    ```bash
+    # 测试 LiteLLM
+    curl http://localhost:4000/v1/chat/completions \
+      -H "Authorization: Bearer sk-key" \
+      -H "Content-Type: application/json" \
+      -d '{"model": "your-model", "messages": [{"role": "user", "content": "test"}]}'
+    ```
+  </Accordion>
+  
+  <Accordion title="响应缓慢">
+    检查每个提供商的延迟：
+    ```yaml
+    router_settings:
+      routing_strategy: "latency-based"
+      enable_pre_call_checks: true
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## 最佳实践
+
+### Bytebot 模型选择
+
+选择具有强大视觉能力的模型以获得最佳效果：
+
+<Tabs>
+  <Tab title="推荐选项">
+    - Claude 3.5 Sonnet (综合最佳)
+    - GPT-4o (优秀视觉+推理能力)
+    - Gemini 1.5 Pro (大上下文窗口)
+  </Tab>
+  <Tab title="经济选项">
+    - Claude 3.5 Haiku (快速+便宜)
+    - GPT-4o mini (良好平衡)
+    - Gemini 1.5 Flash (极速)
+  </Tab>
+  <Tab title="本地模型">
+    - LLaVA (支持视觉)
+    - Qwen-VL (支持视觉)
+    - CogVLM (支持视觉)
+  </Tab>
+</Tabs>
+
+### 性能优化
+
+```yaml
+# Optimize for Bytebot workloads
+router_settings:
+  routing_strategy: "latency-based"
+  cooldown_time: 60  # Seconds before retrying failed provider
+  num_retries: 2
+  request_timeout: 600  # 10 minutes for complex tasks
+  
+  # Cache for repeated requests
+  cache: true
+  cache_params:
+    type: "redis"
+    host: "redis"
+    port: 6379
+    ttl: 3600  # 1 hour
+```
+
+### 安全性
+
+```yaml
+general_settings:
+  master_key: ${LITELLM_MASTER_KEY}
+  
+  # IP allowlist
+  allowed_ips: ["10.0.0.0/8", "172.16.0.0/12"]
+  
+  # Audit logging
+  store_model_in_db: true
+  
+  # Encryption
+  encrypt_keys: true
+  
+  # Headers to forward
+  forward_headers: ["X-Request-ID", "X-User-ID"]
+```
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="Supported Models" icon="list" href="https://docs.litellm.ai/docs/providers">
+    完整的100+提供商列表
+  </Card>
+  <Card title="LiteLLM Proxy Docs" icon="server" href="https://docs.litellm.ai/docs/simple_proxy">
+    LiteLLM代理服务器官方文档
+  </Card>
+  <Card title="LiteLLM Docs" icon="book" href="https://docs.litellm.ai">
+    完整的LiteLLM文档
+  </Card>
+</CardGroup>
+
+<Note>
+  **专业提示:** 从单个提供商开始，然后根据需要添加更多。LiteLLM让您无需更改Bytebot配置即可轻松切换或组合模型。
+</Note>

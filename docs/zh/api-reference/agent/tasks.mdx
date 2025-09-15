@@ -1,0 +1,310 @@
+---
+title: '任务 API'
+description: 'Bytebot 代理任务 API 参考文档'
+---
+
+## 任务 API
+
+任务 API 允许您管理 Bytebot 代理系统中的任务。在完整代理设置运行时，可通过 `http://localhost:9991/tasks` 访问。
+
+## 任务模型
+
+```typescript
+{
+  id: string;
+  description: string; 
+  status: 'PENDING' | 'IN_PROGRESS' | 'NEEDS_HELP' | 'NEEDS_REVIEW' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  createdAt: string; 
+  updatedAt: string; 
+}
+```
+
+## 端点
+
+### 创建任务
+
+创建新任务供代理处理。
+
+<Card title="POST /tasks" icon="plus">
+  创建新任务
+</Card>
+
+#### 请求体
+
+```json
+{
+  "description": "This is a description of the task",
+  "priority": "MEDIUM" // Optional: LOW, MEDIUM, HIGH, URGENT
+}
+```
+
+#### 带文件上传
+
+要上传任务文件，请使用 `multipart/form-data`：
+
+```bash
+curl -X POST http://localhost:9991/tasks \
+  -F "description=Analyze the uploaded contracts and extract key terms" \
+  -F "priority=HIGH" \
+  -F "files=@contract1.pdf" \
+  -F "files=@contract2.pdf"
+```
+
+上传的文件会自动保存到桌面，并可在任务描述中引用。
+
+#### 响应
+
+```json
+{
+  "id": "task-123",
+  "description": "This is a description of the task",
+  "status": "PENDING",
+  "priority": "MEDIUM",
+  "createdAt": "2025-04-14T12:00:00Z",
+  "updatedAt": "2025-04-14T12:00:00Z"
+}
+```
+
+### 获取所有任务
+
+检索所有任务的列表。
+
+<Card title="GET /tasks" icon="list">
+  获取所有任务
+</Card>
+
+#### 响应
+
+```json
+[
+  {
+    "id": "task-123",
+    "description": "This is a description of the task",
+    "status": "PENDING",
+    "priority": "MEDIUM",
+    "createdAt": "2025-04-14T12:00:00Z",
+    "updatedAt": "2025-04-14T12:00:00Z"
+  },
+  // ...more tasks
+]
+```
+
+### 获取进行中任务
+
+检索当前正在进行的任务（如果有）。
+
+<Card title="GET /tasks/in-progress" icon="play">
+  获取当前进行中的任务
+</Card>
+
+#### 响应
+
+```json
+{
+  "id": "task-123",
+  "description": "This is a description of the task",
+  "status": "IN_PROGRESS",
+  "priority": "MEDIUM",
+  "createdAt": "2025-04-14T12:00:00Z",
+  "updatedAt": "2025-04-14T12:00:00Z"
+}
+```
+
+如果没有任务正在进行，响应将为 `null`。
+
+### 按 ID 获取任务
+
+按 ID 检索特定任务。
+
+<Card title="GET /tasks/:id" icon="magnifying-glass">
+  按 ID 获取任务
+</Card>
+
+#### 响应
+
+```json
+{
+  "id": "task-123",
+  "description": "This is a description of the task",
+  "status": "PENDING",
+  "priority": "MEDIUM",
+  "createdAt": "2025-04-14T12:00:00Z",
+  "updatedAt": "2025-04-14T12:00:00Z",
+  "messages": [
+    {
+      "id": "msg-456",
+      "content": [
+        {
+          "type": "text",
+          "text": "This is a message"
+        }
+      ],
+      "role": "USER",
+      "taskId": "task-123",
+      "createdAt": "2025-04-14T12:05:00Z",
+      "updatedAt": "2025-04-14T12:05:00Z"
+    }
+    // ...more messages
+  ]
+}
+```
+
+### 更新任务
+
+更新现有任务。
+
+<Card title="PATCH /tasks/:id" icon="pen">
+  更新任务
+</Card>
+
+#### 请求体
+
+```json
+{
+  "status": "COMPLETED", 
+  "priority": "HIGH" 
+}
+```
+
+#### 响应
+
+```json
+{
+  "id": "task-123",
+  "description": "This is a description of the task",
+  "status": "COMPLETED",
+  "priority": "HIGH",
+  "createdAt": "2025-04-14T12:00:00Z",
+  "updatedAt": "2025-04-14T12:01:00Z"
+}
+```
+
+### 删除任务
+
+删除任务。
+
+<Card title="DELETE /tasks/:id" icon="trash">
+  删除任务
+</Card>
+
+#### 响应
+
+状态码 `204 No Content`，响应体为空。
+
+## 消息内容结构
+
+Bytebot 代理系统中的消息使用与 Anthropic 的 Claude API 兼容的内容块结构：
+
+```typescript
+type MessageContent = MessageContentBlock[];
+
+interface MessageContentBlock {
+  type: string;  
+  [key: string]: any;  
+}
+
+interface TextContentBlock {
+  type: "text";
+  text: string;
+}
+
+interface ImageContentBlock {
+  type: "image";
+  source: {
+    type: "base64";
+    media_type: string;  
+    data: string;  
+  };
+}
+```
+
+## 错误响应
+
+API 可能返回以下错误响应：
+
+| 状态码 | 描述                                |
+|-------------|--------------------------------------------|
+| `400`       | 错误请求 - 参数无效           |
+| `404`       | 未找到 - 资源不存在        |
+| `500`       | 内部服务器错误 - 服务器端错误  |
+
+错误响应示例：
+
+```json
+{
+  "statusCode": 404,
+  "message": "Task with ID task-123 not found",
+  "error": "Not Found"
+}
+```
+
+## 代码示例
+
+<CodeGroup>
+```javascript JavaScript
+const axios = require('axios');
+
+async function createTask(description) {
+  const response = await axios.post('http://localhost:9991/tasks', {
+    description
+  });
+  return response.data;
+}
+
+async function findInProgressTask() {
+  const response = await axios.get('http://localhost:9991/tasks/in-progress');
+  return response.data;
+}
+
+// Example usage
+async function main() {
+  // Create a new task
+  const task = await createTask('Compare React, Vue, and Angular for a new project');
+  console.log('Created task:', task);
+  
+  // Get current in-progress task
+  const inProgressTask = await findInProgressTask();
+  console.log('In progress task:', inProgressTask);
+}
+```
+
+```python Python
+import requests
+
+def create_task(description):
+    response = requests.post(
+        "http://localhost:9991/tasks",
+        json={
+            "description": description
+        }
+    )
+    return response.json()
+
+def find_in_progress_task():
+    response = requests.get("http://localhost:9991/tasks/in-progress")
+    return response.json()
+
+# Example usage
+def main():
+    # Create a new task
+    task = create_task("Compare React, Vue, and Angular for a new project")
+    print(f"Created task: {task}")
+    
+    # Get current in-progress task
+    in_progress_task = find_in_progress_task()
+    print(f"In progress task: {in_progress_task}")
+```
+
+```curl cURL
+# Create a new task
+curl -X POST http://localhost:9991/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Compare React, Vue, and Angular for a new project"
+  }'
+
+# Get current in-progress task
+curl -X GET http://localhost:9991/tasks/in-progress
+```
+</CodeGroup>

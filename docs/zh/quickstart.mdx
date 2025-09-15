@@ -1,0 +1,361 @@
+---
+title: "快速开始"
+description: "2分钟内让您的AI桌面助手运行起来"
+---
+
+# 选择您的部署方式
+
+Bytebot 可根据您的需求通过多种方式部署：
+
+<Tabs>
+  <Tab title="Railway (最简单)">
+    ## ☁️ 一键部署到 Railway
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/bytebot?referralCode=L9lKXQ)
+
+<Steps>
+  <Step title="访问模板">
+    点击 Railway 上 Bytebot 模板中的 "Deploy Now" 按钮。
+  </Step>
+  <Step title="添加 Anthropic 密钥">
+    为 bytebot-agent 资源输入您的 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY` 或 `GEMINI_API_KEY`。
+  </Step>
+  <Step title="部署并启动">
+    点击 **Deploy**。Railway 将构建堆栈，通过私有网络连接服务，并为 UI 输出一个公共 URL。您的代理应在几分钟内准备就绪！
+  </Step>
+</Steps>
+
+<Note>
+  需要更多详细信息？请参阅完整的 <a href="/deployment/railway">Railway 部署指南</a>。
+</Note>
+
+  </Tab>
+  <Tab title="Docker Compose">
+    ## 🐳 使用 Docker Compose 自托管
+
+## 先决条件
+
+- Docker ≥ 20.10
+- Docker Compose
+- 可用 4GB+ RAM
+- 来自以下提供商之一的 AI API 密钥：
+  - Anthropic ([在此获取](https://console.anthropic.com)) - Claude 模型
+  - OpenAI ([在此获取](https://platform.openai.com/api-keys)) - GPT 模型
+  - Google ([在此获取](https://makersuite.google.com/app/apikey)) - Gemini 模型
+
+## 🚀 2 分钟设置
+
+只需三个命令即可运行您的自托管 AI 桌面代理：
+
+<Steps>
+  <Step title="克隆并配置">
+    ```bash 
+    git clone https://github.com/bytebot-ai/bytebot.git
+    cd bytebot
+    
+    # 配置您的 AI 提供商（选择一个）：
+    echo "ANTHROPIC_API_KEY=your_api_key_here" > docker/.env    # 用于 Claude
+    # echo "OPENAI_API_KEY=your_api_key_here" > docker/.env     # 用于 OpenAI
+    # echo "GEMINI_API_KEY=your_api_key_here" > docker/.env     # 用于 Gemini
+    ```
+  </Step>
+
+<Step title="启动代理堆栈">
+  ```bash 
+  docker-compose -f docker/docker-compose.yml up -d 
+  ```
+
+这将启动所有四个服务：
+
+- **Bytebot Desktop**: 容器化的 Linux 环境
+- **AI Agent**: 基于 LLM 的任务处理器（支持 Claude、GPT 或 Gemini）
+- **Chat UI**: 用于交互的 Web 界面
+- **Database**: 用于持久化的 PostgreSQL
+
+</Step>
+
+<Step title="打开聊天界面">
+导航至 [http://localhost:9992](http://localhost:9992) 以访问 Bytebot UI。
+
+**两种交互方式：**
+1. **任务**: 输入任务描述，让 Bytebot 自主工作
+2. **桌面**: 直接访问虚拟桌面进行手动控制
+
+尝试询问：
+
+- "打开 Firefox 并搜索天气预报"
+- "截取桌面截图"
+- "创建一个包含今天日期的文本文件"
+
+</Step>
+</Steps>
+
+<Note>
+  **第一次使用？** 初始启动可能需要 2-3 分钟，因为 Docker 会下载镜像。后续启动会快得多。
+</Note>
+
+## 🎯 您刚刚部署的内容
+
+您现在拥有一个完整的 AI 桌面自动化系统，包含：
+
+<Note>
+  **🔐 密码管理器支持**: 当您安装密码管理器扩展时，Bytebot 可以自动处理身份验证。请参阅我们的 [密码管理指南](/guides/password-management) 获取设置说明。
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="AI 代理" icon="brain">
+    - 理解自然语言
+    - 规划并执行任务
+    - 适应错误
+    - 自主工作
+  </Card>
+  <Card title="虚拟桌面" icon="desktop">
+    - 完整的 Ubuntu 环境
+    - 浏览器、办公工具
+    - 文件系统访问
+    - 应用程序支持
+  </Card>
+  <Card title="任务界面" icon="window">
+    - 创建和管理任务
+    - 实时桌面视图
+    - 对话历史记录
+    - 接管模式
+  </Card>
+  <Card title="REST API" icon="code">
+    - 编程控制
+    - 任务管理 API
+    - 直接桌面访问
+    - MCP 协议支持
+  </Card>
+</CardGroup>
+
+## 🚀 您的第一个任务
+
+现在让我们看看 Bytebot 的实际操作！尝试以下示例任务：
+
+### 简单任务（测试基础功能）
+<CardGroup cols={2}>
+  <Card title="截取屏幕截图" icon="camera">
+    "截取桌面截图"
+  </Card>
+  <Card title="打开浏览器" icon="globe">
+    "打开 Firefox 并访问 google.com"
+  </Card>
+  <Card title="创建文件" icon="file">
+    "创建一个名为 'hello.txt' 的文本文件，包含今天的日期"
+  </Card>
+  <Card title="系统信息" icon="info">
+    "检查系统信息并告诉我操作系统版本"
+  </Card>
+</CardGroup>
+
+### 高级任务（体验强大功能）
+<CardGroup cols={2}>
+  <Card title="网络研究" icon="magnifying-glass">
+    "查找今天排名前 5 的 AI 新闻故事并创建摘要文档"
+  </Card>
+  <Card title="数据提取" icon="table">
+    "访问黑客新闻，找到排名前 10 的故事，并将它们保存到 CSV 文件"
+  </Card>
+  <Card title="文档处理" icon="file-pdf">
+    "上传 PDF 合同并提取所有付款条款和截止日期"
+  </Card>
+  <Card title="多步骤工作流" icon="layers">
+    "搜索 '机器学习教程'，在前 3 个结果中打开标签页，并为每个页面截取屏幕截图"
+  </Card>
+</CardGroup>
+
+## 访问您的服务
+
+| 服务          | URL                                                                      | 用途                                       |
+| ---------------- | ------------------------------------------------------------------------ | --------------------------------------------- |
+| **任务 UI**     | [http://localhost:9992](http://localhost:9992)                           | 与代理交互的主要界面 |
+| **代理 API**    | [http://localhost:9991/tasks](http://localhost:9991/tasks)               | 用于编程创建任务的 REST API       |
+| **桌面 API** | [http://localhost:9990/computer-use](http://localhost:9990/computer-use) | 低级桌面控制 API                 |
+| **MCP SSE**      | [http://localhost:9990/mcp](http://localhost:9990/mcp)                 | 连接 MCP 客户端以访问工具           |
+
+  </Tab>
+  <Tab title="Kubernetes/Helm">
+    ## ☸️ 使用 Helm 部署
+    
+    请参阅我们的 [Helm 部署指南](/deployment/helm) 了解 Kubernetes 安装。
+  </Tab>
+  <Tab title="仅桌面">
+    ## 🖥️ 仅桌面容器
+    
+    如果您只需要虚拟桌面而不需要 AI 代理：
+
+    ```bash
+    # 使用预构建镜像（推荐）
+    docker-compose -f docker/docker-compose.core.yml pull
+    docker-compose -f docker/docker-compose.core.yml up -d
+    ```
+
+    或在本地构建：
+    ```bash
+    docker-compose -f docker/docker-compose.core.yml up -d --build
+    ```
+
+    在 [http://localhost:9990/vnc](http://localhost:9990/vnc) 访问桌面
+  </Tab>
+</Tabs>
+
+## 管理您的智能体
+
+### 查看日志
+
+监控您的智能体正在执行的操作：
+
+```bash
+# All services
+docker-compose -f docker/docker-compose.yml logs -f
+
+# Just the agent
+docker-compose -f docker/docker-compose.yml logs -f bytebot-agent
+```
+
+### 停止服务
+
+```bash
+docker-compose -f docker/docker-compose.yml down
+```
+
+### 更新至最新版本
+
+```bash
+docker-compose -f docker/docker-compose.yml pull
+docker-compose -f docker/docker-compose.yml up -d
+```
+
+### 重置所有内容
+
+移除所有数据并重新开始：
+
+```bash
+docker-compose -f docker/docker-compose.yml down -v
+```
+
+## 快速 API 示例
+
+### 通过 API 创建任务
+
+```bash
+# Simple task
+curl -X POST http://localhost:9991/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Search for flights from NYC to London next month",
+    "priority": "MEDIUM"
+  }'
+
+# Task with file upload
+curl -X POST http://localhost:9991/tasks \
+  -F "description=Read this contract and summarize the key terms" \
+  -F "priority=HIGH" \
+  -F "files=@contract.pdf"
+```
+
+### 直接桌面控制
+
+```bash
+# Take a screenshot
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "screenshot"}'
+
+# Type text
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "type_text", "text": "Hello, Bytebot!"}'
+```
+
+## 故障排除
+
+<AccordionGroup>
+  <Accordion title="容器无法启动">
+    检查 Docker 是否正在运行且资源充足： 
+    ```bash 
+    docker info
+    docker-compose -f docker/docker-compose.yml logs 
+    ```
+  </Accordion>
+  <Accordion title="无法连接到任务界面">
+    确保所有服务都在运行： 
+    ```bash 
+    docker-compose -f docker/docker-compose.yml ps 
+    ``` 
+    所有服务应显示为 "Up"（运行中）。
+  </Accordion>
+  <Accordion title="智能体错误或无响应">
+    检查您的 API 密钥是否正确设置： 
+    ```bash 
+    cat docker/.env
+    docker-compose -f docker/docker-compose.yml logs bytebot-agent 
+    ```
+    确保您使用的是来自 Anthropic、OpenAI 或 Google 的有效 API 密钥。
+  </Accordion>
+</AccordionGroup>
+
+## 📚 后续步骤
+
+<CardGroup cols={2}>
+  <Card
+    title="使用界面"
+    icon="window"
+    href="/guides/task-creation"
+  >
+    学习如何有效创建和管理任务
+  </Card>
+  <Card title="接管模式" icon="hand" href="/guides/takeover-mode">
+    在需要引导 Bytebot 时接管控制
+  </Card>
+  <Card title="LiteLLM 集成" icon="plug" href="/deployment/litellm">
+    使用任意 LLM 提供商与 Bytebot 配合
+  </Card>
+  <Card title="API 集成" icon="code" href="/api-reference/introduction">
+    通过应用程序自动化 Bytebot
+  </Card>
+</CardGroup>
+
+## 🔧 配置选项
+
+### 环境变量
+
+<AccordionGroup>
+  <Accordion title="AI 提供商设置">
+    ```bash
+    # 选择一个 AI 提供商：
+    ANTHROPIC_API_KEY=sk-ant-...    # 用于 Claude 模型
+    OPENAI_API_KEY=sk-...           # 用于 GPT 模型  
+    GEMINI_API_KEY=...              # 用于 Gemini 模型
+    
+    # 可选：使用特定模型
+    ANTHROPIC_MODEL=claude-3-5-sonnet-20241022  # 默认
+    OPENAI_MODEL=gpt-4o
+    GEMINI_MODEL=gemini-1.5-flash
+    ```
+  </Accordion>
+  <Accordion title="端口配置">
+    ```bash
+    # 如有需要，更改默认端口
+    # 编辑 docker-compose.yml 的 ports 部分：
+    # bytebot-ui:
+    #   ports:
+    #     - "8080:9992"  # 将 8080 改为您所需的端口
+    ```
+  </Accordion>
+  <Accordion title="使用 LiteLLM 代理">
+    ```bash
+    # 要使用多个 LLM 提供商，请使用代理设置：
+    docker-compose -f docker/docker-compose.proxy.yml up -d
+    
+    # 这包含一个预配置的 LiteLLM 代理
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  **需要帮助？** 加入我们的 [Discord
+  社区](https://discord.com/invite/d9ewZkWPTP) 获取支持并分享
+  您正在构建的内容！
+</Note>

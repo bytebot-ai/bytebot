@@ -1,0 +1,442 @@
+---
+title: "任务创建与管理"
+description: "掌握创建高效任务并管理其完成过程的技巧"
+---
+
+# 在 Bytebot 中创建和管理任务
+
+本指南将带您了解创建 Bytebot 可有效执行的任务以及管理其生命周期的所有必要知识。
+
+## 理解任务
+
+任务是您希望 Bytebot 完成的任何工作。任务可以是：
+
+- **简单型**："登录 GitHub" 或 "访问 example.com"（使用一个程序）
+- **复杂型**："从电子邮件下载发票并保存到文件夹"（使用多个程序）
+- **基于文件型**："读取上传的 PDF 并提取所有电子邮件地址"（处理上传的文件）
+- **协作型**："处理发票，请我处理特殊审批"
+
+## 文件处理
+
+Bytebot 具有强大的文件处理能力，非常适合文档处理和数据分折任务。
+
+### 上传任务文件
+
+创建任务时，您可以上传文件，这些文件将自动保存到桌面实例。这对于以下场景非常有用：
+
+- **文档处理**：上传 PDF、电子表格或文档供 Bytebot 分析
+- **数据分析**：提供 CSV 文件或数据集进行处理
+- **模板填充**：上传需要填写的表格或模板
+- **批量操作**：上传多个文件进行批量处理
+
+<Note>
+  **游戏规则改变者**：Bytebot 能够将整个文件（包括 PDF）直接读取到 LLM 上下文中。这意味着它可以快速处理大量数据，并理解复杂文档，无需手动提取。
+</Note>
+
+### 文件上传示例
+
+<Tabs>
+  <Tab title="Web UI">
+    1. 创建任务时点击附件按钮
+    2. 选择要上传的文件（PDF、CSV、图片等）
+    3. 文件将自动保存到桌面
+    4. 在任务描述中引用它们：
+    ```
+    "读取上传的 contracts.pdf 并提取所有付款条款，
+    然后创建一个包含供应商名称和条款的摘要电子表格"
+    ```
+  </Tab>
+  <Tab title="API">
+    ```bash
+    # 创建任务时上传文件（multipart/form-data）
+    curl -X POST http://localhost:9991/tasks \
+      -F "description=Analyze the uploaded financial statements and create a summary" \
+      -F "priority=HIGH" \
+      -F "files=@financial_statements_2024.pdf" \
+      -F "files=@budget_comparison.xlsx"
+    ```
+  </Tab>
+</Tabs>
+
+### 文件处理能力
+
+<CardGroup cols={2}>
+  <Card title="PDF 分析" icon="file-pdf">
+    - 从 PDF 中提取文本
+    - 将整个 PDF 读入上下文
+    - 解析表单和合同
+    - 提取表格和数据
+  </Card>
+  <Card title="电子表格处理" icon="table">
+    - 读取 Excel/CSV 文件
+    - 分析数据模式
+    - 生成报告
+    - 跨多个工作表交叉引用
+  </Card>
+  <Card title="文档理解" icon="brain">
+    - 总结长文档
+    - 提取关键信息
+    - 比较多个文件
+    - 回答关于内容的问题
+  </Card>
+  <Card title="批量操作" icon="layer-group">
+    - 处理多个文件
+    - 对每个文件应用相同的分析
+    - 合并结果
+    - 生成统一报告
+  </Card>
+</CardGroup>
+
+## 创建您的第一个任务
+
+### 使用 Web 界面
+
+<Steps>
+  <Step title="打开 Bytebot 界面">
+    导航至 `http://localhost:9992`
+  </Step>
+  
+  <Step title="输入您的任务">
+    在左侧的输入字段中，输入您想要完成的任务。例如：
+    ```
+    登录我的 GitHub 账户并检查新通知
+    ```
+  </Step>
+  
+  <Step title="开始任务">
+    按下箭头按钮或按 Enter 键。Bytebot 将开始加载并着手处理您的任务。
+  </Step>
+</Steps>
+
+### 使用 API
+
+```bash
+curl -X POST http://localhost:9991/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Download all PDF invoices from my email and organize by date",
+    "priority": "HIGH",
+    "type": "IMMEDIATE"
+  }'
+```
+
+## 编写有效的任务描述
+
+### 黄金法则
+
+<CardGroup cols={2}>
+  <Card title="明确具体" icon="bullseye">
+    ❌ "做一些研究"
+    ✅ "研究适用于小型企业的前5名CRM工具"
+  </Card>
+  <Card title="包含上下文" icon="info">
+    ❌ "填写表格"
+    ✅ "在example.com上用测试数据填写联系表单"
+  </Card>
+  <Card title="定义成功标准" icon="check">
+    ❌ "整理文件"
+    ✅ "按类型将下载文件夹中的文件整理到子文件夹中"
+  </Card>
+  <Card title="每项任务一个目标" icon="target">
+    ❌ "做多个不相关的事情"
+    ✅ "专注于具有明确步骤的单一目标"
+  </Card>
+</CardGroup>
+
+### 任务描述模板
+
+#### 企业流程自动化
+
+```
+Log into [system] and:
+1. [Navigate to specific section]
+2. [Download/Extract data]
+3. [Process through other system]
+4. [Update records/Generate report]
+Handle any [specific scenarios]
+
+Example:
+Log into our banking portal and:
+1. Navigate to wire transfers section
+2. Download all pending wire confirmations
+3. Match against our ERP payment records
+4. Flag any discrepancies in the reconciliation sheet
+(Bytebot handles all authentication including 2FA automatically via password manager)
+```
+
+#### 多应用工作流
+
+```
+Access [System A] to get [data]
+Then in [System B]:
+1. [Process the data]
+2. [Update records]
+Finally in [System C]:
+1. [Verify updates]
+2. [Generate confirmation]
+
+Example:
+Access Salesforce to get list of new customers from today
+Then in NetSuite:
+1. Create customer records with billing info
+2. Set up payment terms
+Finally in our shipping system:
+1. Verify addresses are valid
+2. Generate welcome kit shipping labels
+```
+
+#### 合规与审计任务
+
+```
+For each [entity] in [source]:
+1. Check [compliance requirement]
+2. Document [specific data]
+3. Flag any [violations/issues]
+Generate report showing [metrics]
+
+Example:
+For each vendor in our approved vendor list:
+1. Check their insurance certificates are current
+2. Document expiration dates and coverage amounts  
+3. Flag any expiring within 30 days
+Generate report showing compliance percentage by category
+```
+
+## 管理活动任务
+
+### 任务状态
+
+<img src="/images/task-lifecycle.png" alt="Task Lifecycle" className="w-full max-w-3xl" />
+
+任务会经历以下状态：
+
+1. **已创建** → 任务已定义但未开始
+2. **已排队** → 等待代理可用
+3. **运行中** → 正在积极处理
+4. **需要帮助** → 需要人工输入
+5. **已完成** → 成功完成
+6. **已失败** → 无法完成
+
+### 监控进度
+
+#### 实时更新
+
+通过任务详情查看器观察Bytebot的工作过程：
+
+- **绿点**：任务正在积极运行
+- **状态消息**：当前正在执行的步骤
+- **桌面视图**：实时查看Bytebot所见内容
+
+#### 聊天消息
+
+Bytebot提供如下更新：
+
+```
+Assistant: I'm now searching for project management tools...
+Assistant: Found 15 options, filtering by your criteria...
+Assistant: Creating the comparison table with 5 tools...
+```
+
+### 与运行中的任务交互
+
+#### 提供额外信息
+
+```
+User: "Also include free tier options in your research"
+Assistant: "I'll add a column for free tier availability to the comparison table."
+```
+
+#### 澄清指令
+
+```
+Assistant: "I found multiple forms on this page. Which one should I fill out?"
+User: "Use the 'Contact Sales' form on the right side"
+```
+
+#### 修改任务
+
+```
+User: "Actually, make it top 10 tools instead of top 5"
+Assistant: "I'll expand my research to include 10 tools in the comparison."
+```
+
+## 高级任务管理
+
+### 任务依赖关系
+
+链接相互依赖的任务：
+
+```
+Task 1: "Download the invoice from the vendor portal"
+Task 2: "Open the downloaded invoice and extract the total amount"
+Task 3: "Enter the amount into our accounting system"
+```
+
+## 最佳实践
+
+### 正确做法 ✅
+
+1. **从简单开始**：在复杂任务前先用基础任务测试
+2. **提供示例**："按照上周报告的格式进行排版"
+3. **安全包含凭据**：使用接管模式输入密码
+4. **设定合理预期**：复杂任务需要时间完成
+5. **检查结果**：始终验证重要输出
+
+### 错误做法 ❌
+
+1. **单任务过载**：将复杂工作流拆分为多个步骤
+2. **假定已知**：解释自定义应用程序
+3. **跳过上下文**：始终提供必要的背景信息
+4. **忽略错误**：及时处理问题
+5. **匆忙处理关键任务**：留出时间仔细执行
+
+## 按类别划分的任务示例
+
+### 📄 文档处理与分析
+
+```
+"Read the uploaded contract.pdf and extract all key terms including payment schedules, deliverables, and termination clauses. Create a summary document with these details."
+
+"Process all the uploaded invoice PDFs, extract vendor names, amounts, and due dates, then create a consolidated Excel spreadsheet sorted by due date."
+
+"Analyze the uploaded financial_report.pdf and answer these questions: What was the revenue growth? What are the main risk factors mentioned? What is the debt-to-equity ratio?"
+
+"Read through the uploaded employee_handbook.pdf and create a checklist of all compliance requirements mentioned in the document."
+```
+
+### 🏦 企业自动化（RPA风格工作流）
+
+```
+"Log into our banking portal, download all transaction files from last month, save them to the Finance/Statements folder, then run the reconciliation script on each file."
+
+(Note: Bytebot handles all authentication including 2FA automatically using the built-in password manager)
+
+"Access the vendor portal at supplier.example.com, navigate to the invoice section, download all pending invoices, extract the data into our standard template, and upload to the AP system."
+
+"Open our legacy ERP system, export the customer list, then for each customer, look them up in the new CRM and update their status and last contact date."
+```
+
+### 📊 财务运营与数据分析
+
+```
+"Read the uploaded bank_statements folder containing 12 monthly PDFs, extract all transactions over $10,000, and create a summary report showing patterns and anomalies."
+
+"Log into each of our 5 bank accounts, download the daily statements, consolidate them into a single cash position report, and save to the shared finance folder."
+
+"Process the uploaded expense_reports.zip file, review all reports over $1,000, create a summary with policy violations flagged, and prepare for approval."
+
+"Navigate to the tax authority website, download all GST/VAT returns for Q4, extract the figures, and populate our tax reconciliation spreadsheet."
+```
+
+### 🔄 多系统集成
+
+```
+"Pull today's orders from Shopify, create corresponding entries in NetSuite, update inventory in our WMS, and trigger shipping labels in ShipStation."
+
+"Extract employee data from Workday, cross-reference with our access control system, identify discrepancies, and create tickets for IT to resolve."
+
+"Log into our insurance portal, download policy documents for all active policies, extract key dates and coverage amounts, update our risk management database."
+```
+
+### 📈 合规与报告
+
+```
+"Access all state regulatory websites for our operating regions, check for new compliance updates since last month, download relevant documents, and create a summary report."
+
+"Log into our various SaaS tools (list provided), export user access reports, consolidate into a single audit trail, and flag any terminated employees still with access."
+
+"Navigate to customer portal, download all SLA performance reports, extract metrics, compare against our internal data, and highlight discrepancies."
+```
+
+### 🤝 开发与质量保证集成
+
+```
+"After the code agent deploys the new feature, test the complete user journey from signup to checkout, take screenshots at each step, and verify against the design specs."
+
+"Run through all test scenarios in our QA checklist, but for any failures, have the code agent analyze the error and attempt a fix, then retest automatically."
+
+"Monitor our staging environment, when a new build is deployed, automatically run the smoke test suite and create a visual regression report comparing to production."
+```
+
+## 常见问题排查
+
+<AccordionGroup>
+  <Accordion title="任务卡在'运行中'状态">
+    **可能原因**:
+    - 等待缓慢的页面/应用加载
+    - 遇到意外弹窗
+    - 下一步操作不明确
+    
+    **解决方案**:
+    - 通过桌面查看器检查当前状态
+    - 通过聊天提供说明
+    - 使用接管模式协助
+    - 取消并使用更清晰的指令重新开始
+  </Accordion>
+  
+  <Accordion title="任务完成但结果错误">
+    **可能原因**:
+    - 指令模糊不清
+    - 网站/应用发生变化
+    - 上下文理解错误
+    
+    **解决方案**:
+    - 检查任务描述的清晰度
+    - 提供具体示例
+    - 拆分为更小的子任务
+    - 使用接管模式进行演示
+  </Accordion>
+  
+  <Accordion title="任务立即失败">
+    **可能原因**:
+    - 无效URL或应用程序
+    - 缺少先决条件
+    - 系统资源问题
+    
+    **解决方案**:
+    - 验证URL和应用程序名称
+    - 确保所需文件/数据存在
+    - 检查系统资源
+    - 查看聊天中的错误消息
+  </Accordion>
+</AccordionGroup>
+
+## 任务管理技巧
+
+### 组织多个任务
+
+1. **使用清晰命名**: 包含日期、类别或项目信息
+2. **分组相关任务**: 批量处理相似任务
+3. **优先级管理**: 仅为真正紧急情况保留'紧急'标签
+4. **定期检查**: 审查已完成任务的质量
+
+### 性能优化
+
+- **批量处理相似任务**：将网页调研、数据录入等任务分组处理
+- **准备资源**：开始前备好文件/数据
+- **清理桌面**：减少干扰和弹窗
+- **稳定环境**：确保网络通畅和系统资源充足
+
+### 从任务中学习
+
+每项任务完成后：
+
+1. 复盘Bytebot采用的处理方式
+2. 记录存在的低效环节
+3. 优化后续任务描述
+4. 建立高效提示词库
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="接管模式" icon="hand" href="/guides/takeover-mode">
+    学习人机协作技巧
+  </Card>
+  <Card title="API集成" icon="code" href="/api-reference/agent/tasks">
+    实现任务自动化创建
+  </Card>
+</CardGroup>
+
+<Note>
+  **专业提示**：从简单任务开始以了解Bytebot能力，随后根据使用经验逐步增加任务复杂度。
+</Note>

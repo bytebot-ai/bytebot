@@ -1,0 +1,526 @@
+---
+title: "计算机操作"
+openapi: "POST /computer-use"
+description: "在虚拟桌面环境中执行计算机操作"
+---
+
+在 Bytebot 桌面环境中执行鼠标移动、点击、键盘输入和截图等操作。
+
+## 请求
+
+<ParamField body="action" type="string" required>
+  要执行的计算机操作类型。必须是以下之一：`move_mouse`、`trace_mouse`、
+  `click_mouse`、`press_mouse`、`drag_mouse`、`scroll`、`type_keys`、`press_keys`、
+  `type_text`、`wait`、`screenshot`、`cursor_position`。
+</ParamField>
+
+### 鼠标操作
+
+<Accordion title="move_mouse">
+  <ParamField body="coordinates" type="object" required>
+    要移动到的目标坐标。
+    
+    <Expandable title="coordinates 属性">
+      <ParamField body="x" type="number" required>
+        X 坐标（水平位置）
+      </ParamField>
+      <ParamField body="y" type="number" required>
+        Y 坐标（垂直位置）
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+**请求示例**
+
+```json
+{
+  "action": "move_mouse",
+  "coordinates": {
+    "x": 100,
+    "y": 200
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="trace_mouse">
+  <ParamField body="path" type="array" required>
+    鼠标路径的坐标对象数组。
+    
+    <Expandable title="path">
+      <ParamField body="0" type="object">
+        <Expandable title="properties">
+          <ParamField body="x" type="number" required>
+            X 坐标
+          </ParamField>
+          <ParamField body="y" type="number" required>
+            Y 坐标
+          </ParamField>
+        </Expandable>
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="holdKeys" type="array">
+  在沿路径移动鼠标时按住的按键。
+</ParamField>
+
+**示例请求**
+
+```json
+{
+  "action": "trace_mouse",
+  "path": [
+    { "x": 100, "y": 100 },
+    { "x": 150, "y": 150 },
+    { "x": 200, "y": 200 }
+  ],
+  "holdKeys": ["shift"]
+}
+```
+
+</Accordion>
+
+<Accordion title="click_mouse">
+  <ParamField body="coordinates" type="object">
+    要点击的坐标（如果省略则使用当前光标位置）。
+    
+    <Expandable title="坐标属性">
+      <ParamField body="x" type="number" required>
+        X坐标（水平位置）
+      </ParamField>
+      <ParamField body="y" type="number" required>
+        Y坐标（垂直位置）
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="button" type="string" required>
+  要点击的鼠标按钮。必须是以下之一：`left`、`right`、`middle`。
+</ParamField>
+
+{" "}
+
+<ParamField body="clickCount" type="number" required>
+  要执行的点击次数。
+</ParamField>
+
+{" "}
+
+<ParamField body="holdKeys" type="array">
+  点击时按住的功能键（例如，['ctrl', 'shift']）
+  <Expandable title="holdKeys">
+    <ParamField body="0" type="string">
+      键名
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**示例请求**
+
+```json
+{
+  "action": "click_mouse",
+  "coordinates": {
+    "x": 150,
+    "y": 250
+  },
+  "button": "left",
+  "clickCount": 2
+}
+```
+
+</Accordion>
+
+<Accordion title="press_mouse">
+  <ParamField body="coordinates" type="object">
+    要按下/释放的坐标（如果省略则使用当前光标位置）。
+    
+    <Expandable title="坐标属性">
+      <ParamField body="x" type="number" required>
+        X 坐标（水平位置）
+      </ParamField>
+      <ParamField body="y" type="number" required>
+        Y 坐标（垂直位置）
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="button" type="string" required>
+  要按下/释放的鼠标按钮。必须是以下之一：`left`、`right`、`middle`。
+</ParamField>
+
+{" "}
+
+<ParamField body="press" type="string" required>
+  是按下还是释放按钮。必须是以下之一：`up`、`down`。
+</ParamField>
+
+**示例请求**
+
+```json
+{
+  "action": "press_mouse",
+  "coordinates": {
+    "x": 150,
+    "y": 250
+  },
+  "button": "left",
+  "press": "down"
+}
+```
+
+</Accordion>
+
+<Accordion title="drag_mouse">
+  <ParamField body="path" type="array" required>
+    拖拽路径的坐标对象数组。
+    
+    <Expandable title="path">
+      <ParamField body="0" type="object">
+        <Expandable title="properties">
+          <ParamField body="x" type="number" required>
+            X 坐标
+          </ParamField>
+          <ParamField body="y" type="number" required>
+            Y 坐标
+          </ParamField>
+        </Expandable>
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="button" type="string" required>
+  用于拖拽的鼠标按钮。必须是以下之一：`left`、`right`、`middle`。
+</ParamField>
+
+{" "}
+
+<ParamField body="holdKeys" type="array">
+  拖拽时按住的按键。
+</ParamField>
+
+**示例请求**
+
+```json
+{
+  "action": "drag_mouse",
+  "path": [
+    { "x": 100, "y": 100 },
+    { "x": 200, "y": 200 }
+  ],
+  "button": "left"
+}
+```
+
+</Accordion>
+
+<Accordion title="滚动">
+  <ParamField body="coordinates" type="object">
+    要滚动到的坐标（如果省略则使用当前光标位置）。
+    
+    <Expandable title="坐标属性">
+      <ParamField body="x" type="number" required>
+        X 坐标
+      </ParamField>
+      <ParamField body="y" type="number" required>
+        Y 坐标
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="direction" type="string" required>
+  滚动方向。必须是以下之一：`up`、`down`、`left`、`right`。
+</ParamField>
+
+{" "}
+
+<ParamField body="scrollCount" type="number" required>
+  要执行的滚动步数。
+</ParamField>
+
+{" "}
+
+<ParamField body="holdKeys" type="array">
+  滚动时要按住的键。
+</ParamField>
+
+**示例请求**
+
+```json
+{
+  "action": "scroll",
+  "direction": "down",
+  "scrollCount": 5
+}
+```
+
+</Accordion>
+
+### 键盘操作
+
+<Accordion title="type_keys">
+  <ParamField body="keys" type="array" required>
+    要按顺序输入的键数组。
+    <Expandable title="键">
+      <ParamField body="0" type="string">
+        键名
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="delay" type="number">
+    按键之间的延迟（毫秒）。
+</ParamField>
+
+**示例请求**
+
+```json
+{
+  "action": "type_keys",
+  "keys": ["a", "b", "c", "enter"],
+  "delay": 50
+}
+```
+
+</Accordion>
+
+<Accordion title="press_keys">
+  <ParamField body="keys" type="array" required>
+    要按下或释放的按键数组。
+    <Expandable title="keys">
+      <ParamField body="0" type="string">
+        键名
+      </ParamField>
+    </Expandable>
+  </ParamField>
+
+{" "}
+
+<ParamField body="press" type="string" required>
+    按下或释放按键。必须是以下之一：`up`、`down`。
+</ParamField>
+
+**示例请求**
+
+```json
+{
+  "action": "press_keys",
+  "keys": ["ctrl", "shift", "esc"],
+  "press": "down"
+}
+```
+
+</Accordion>
+
+<Accordion title="type_text">
+  <ParamField body="text" type="string" required>
+    要输入的文本字符串。
+  </ParamField>
+
+{" "}
+
+<ParamField body="delay" type="number">
+    字符之间的延迟（毫秒）。
+</ParamField>
+
+**示例请求**
+
+```json
+{
+  "action": "type_text",
+  "text": "Hello, Bytebot!",
+  "delay": 50
+}
+```
+
+</Accordion>
+
+<Accordion title="paste_text">
+  <ParamField body="text" type="string" required>
+    要粘贴的文本。对于标准键盘上没有的特殊字符非常有用。
+  </ParamField>
+
+**示例请求**
+
+```json
+{
+  "action": "paste_text",
+  "text": "Special characters: ©®™€¥£ émojis 🎉"
+}
+```
+
+</Accordion>
+
+### 系统操作
+
+<Accordion title="wait">
+  <ParamField body="duration" type="number" required>
+    等待时长（毫秒）。
+  </ParamField>
+
+**示例请求**
+
+```json
+{
+  "action": "wait",
+  "duration": 2000
+}
+```
+
+</Accordion>
+
+<Accordion title="screenshot">
+无需参数。
+
+**请求示例**
+
+```json
+{
+  "action": "screenshot"
+}
+```
+
+</Accordion>
+
+<Accordion title="cursor_position">
+无需参数。
+
+**请求示例**
+
+```json
+{
+  "action": "cursor_position"
+}
+```
+
+</Accordion>
+
+<Accordion title="application">
+  <ParamField body="application" type="string" required>
+    要切换到的应用程序。可用选项：`firefox`、`1password`、`thunderbird`、`vscode`、`terminal`、`desktop`、`directory`。
+  </ParamField>
+
+**请求示例**
+
+```json
+{
+  "action": "application",
+  "application": "firefox"
+}
+```
+
+**可用应用程序：**
+- `firefox` - Mozilla Firefox 网页浏览器
+- `1password` - 密码管理器
+- `thunderbird` - 电子邮件客户端
+- `vscode` - Visual Studio Code 编辑器
+- `terminal` - 终端/控制台应用程序
+- `desktop` - 切换到桌面
+- `directory` - 文件管理器/目录浏览器
+
+</Accordion>
+
+## 响应
+
+响应根据执行的操作而有所不同：
+
+### 默认响应
+
+大多数操作返回一个简单的成功响应：
+
+```json
+{
+  "success": true
+}
+```
+
+### 截图响应
+
+返回以 base64 编码字符串形式的截图：
+
+```json
+{
+  "success": true,
+  "data": {
+    "image": "base64_encoded_image_data"
+  }
+}
+```
+
+### 光标位置响应
+
+返回当前光标位置：
+
+```json
+{
+  "success": true,
+  "data": {
+    "x": 123,
+    "y": 456
+  }
+}
+```
+
+### 错误响应
+
+```json
+{
+  "success": false,
+  "error": "Error message"
+}
+```
+
+### 代码示例
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "move_mouse", "coordinates": {"x": 100, "y": 200}}'
+```
+
+```python Python
+import requests
+
+def control_computer(action, **params):
+    url = "http://localhost:9990/computer-use"
+    data = {"action": action, **params}
+    response = requests.post(url, json=data)
+    return response.json()
+
+# Move the mouse
+result = control_computer("move_mouse", coordinates={"x": 100, "y": 100})
+print(result)
+```
+
+```javascript JavaScript
+const axios = require("axios");
+
+async function controlComputer(action, params = {}) {
+  const url = "http://localhost:9990/computer-use";
+  const data = { action, ...params };
+  const response = await axios.post(url, data);
+  return response.data;
+}
+
+// Move mouse example
+controlComputer("move_mouse", { coordinates: { x: 100, y: 100 } })
+  .then((result) => console.log(result))
+  .catch((error) => console.error("Error:", error));
+```
+
+</CodeGroup>

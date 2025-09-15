@@ -1,0 +1,38 @@
+---
+title: "输入追踪"
+openapi: "POST /input-tracking/start"
+description: "在 Bytebot 桌面上启动和停止输入追踪功能"
+---
+
+Bytebot 守护进程可以通过 `InputTracking` 模块监控鼠标和键盘事件。
+默认情况下追踪功能处于禁用状态，可通过 REST API 进行切换。
+追踪到的操作会通过 WebSocket 流式传输，以便代理将其存储为消息。
+
+## 启动追踪
+
+`POST /input-tracking/start`
+
+开始捕获输入事件。该端点返回一个简单的状态对象：
+
+```json
+{
+  "status": "started"
+}
+```
+
+## 停止追踪
+
+`POST /input-tracking/stop`
+
+停止捕获事件并清除所有内部缓冲区。响应格式与启动端点类似：
+
+```json
+{
+  "status": "stopped"
+}
+```
+
+## WebSocket 流
+
+当追踪处于活动状态时，操作会在守护进程运行的 WebSocket 服务器的 `input_action` 通道上发出。
+客户端可以连接到守护进程并监听这些事件，以便根据需要持久化存储。

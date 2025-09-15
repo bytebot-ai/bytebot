@@ -1,0 +1,277 @@
+---
+title: "桌面环境" 
+description: "Bytebot执行任务的虚拟Linux桌面环境"
+---
+
+## 概述
+
+Bytebot桌面环境（也称为Bytebot Core）是一个运行在Docker容器中的完整Linux桌面。这是Bytebot执行工作的地方——点击按钮、输入文本、浏览网站以及使用应用程序，就像您亲自操作一样。
+
+<img
+  src="/images/core-container.png"
+  alt="Bytebot Desktop Environment"
+  className="w-full max-w-4xl"
+/>
+
+## 为何选择虚拟桌面？
+
+### 完全隔离
+
+- **主机零风险**：所有操作都在容器内进行
+- **沙盒环境**：桌面无法访问您的主机系统
+- **轻松重置**：几秒钟内即可销毁并重新创建
+- **纯净工作区**：每次重启都提供全新的环境
+
+### 随处一致
+
+- **平台无关**：在Mac、Windows或Linux上拥有相同的环境
+- **可重现性**：每次设置都完全一致
+- **版本控制**：可固定特定版本以确保稳定性
+- **无依赖项**：所有内容都包含在容器中
+
+### 专为自动化打造
+
+- **可预测的UI**：一致的元素定位
+- **纯净环境**：无弹窗或干扰
+- **自动化就绪**：针对程序化控制进行优化
+- **快速启动**：几秒钟内桌面即可就绪
+
+## 技术栈
+
+### 基础系统
+
+- **Ubuntu 22.04 LTS**：稳定、得到良好支持的Linux发行版
+- **XFCE4桌面**：轻量级、响应迅速的桌面环境
+- **X11显示服务器**：标准Linux图形系统
+- **supervisord**：服务管理
+
+### 预装软件
+
+<CardGroup cols={2}>
+  <Card title="网页浏览器" icon="globe">
+    - Firefox ESR（扩展支持版本）
+    - 预配置用于自动化
+    - 纯净配置文件无干扰
+  </Card>
+  <Card title="生产力工具" icon="file-lines">
+    - 文本编辑器
+    - 办公工具
+    - PDF 查看器
+    - 文件管理器
+  </Card>
+  <Card title="通讯工具" icon="envelope">
+    - Thunderbird 邮件客户端
+    - 终端模拟器
+  </Card>
+  <Card title="安全与开发" icon="shield">
+    - 1Password 密码管理器
+    - Visual Studio Code (VSCode)
+    - Git 版本控制
+    - Python 3 环境
+  </Card>
+</CardGroup>
+
+### 核心服务
+
+1. **bytebotd 守护进程**
+   - 运行在端口 9990
+   - 处理所有自动化请求
+   - 基于 nutjs 框架构建
+   - 提供 REST API
+
+2. **noVNC Web 客户端**
+   - 基于浏览器的桌面访问
+   - 无需安装客户端
+   - 包含 WebSocket 代理
+
+3. **Supervisor**
+   - 进程管理
+   - 服务监控
+   - 自动重启
+   - 日志管理
+
+## 桌面功能
+
+### 显示配置
+
+```bash
+# Resolution
+1920x1080 @ 24-bit color
+```
+
+### 用户环境
+
+- **用户名**: `user`
+- **主目录**: `/home/user`
+- **Sudo 权限**: 是（无密码）
+- **桌面会话**: 启用自动登录
+
+### 文件系统
+
+```
+/home/user/
+├── Desktop/          # Desktop shortcuts
+├── Documents/        # User documents
+├── Downloads/        # Browser downloads
+├── .config/          # Application configs
+└── .local/           # User data
+```
+
+## 访问桌面
+
+### 网页浏览器（推荐）
+
+导航至 `http://localhost:9990/vnc` 即可立即访问：
+
+- 无需安装任何软件
+- 可在任何带有浏览器的设备上运行
+- 支持触控设备
+- 剪贴板共享功能
+
+### MCP 控制
+
+核心容器还暴露了一个 [MCP](https://github.com/rekog-labs/MCP-Nest) 端点。
+将您的 MCP 客户端连接到 `http://localhost:9990/mcp`，即可通过 SSE 调用这些工具。
+
+```json
+{
+  "mcpServers": {
+    "bytebot": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://127.0.0.1:9990/mcp",
+        "--transport",
+        "http-first"
+      ]
+    }
+  }
+}
+```
+
+### 直接 API 控制
+
+自动化场景下的最高效选择：
+
+```bash
+# Take a screenshot
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "screenshot"}'
+
+# Move mouse
+curl -X POST http://localhost:9990/computer-use \
+  -H "Content-Type: application/json" \
+  -d '{"action": "move_mouse", "coordinate": {"x": 500, "y": 300}}'
+```
+
+## 自定义配置
+
+### 添加软件
+
+创建一个自定义的 Dockerfile：
+
+```dockerfile
+FROM ghcr.io/bytebot-ai/bytebot-desktop:edge
+
+# Install additional packages
+RUN apt-get update && apt-get install -y \
+    slack-desktop \
+    zoom \
+    your-custom-app
+
+# Copy configuration files
+COPY configs/ /home/user/.config/
+```
+
+## 性能优化
+
+### 资源分配
+
+```yaml
+# Recommended settings
+deploy:
+  resources:
+    limits:
+      cpus: '2'
+      memory: 4G
+    reservations:
+      cpus: '1'
+      memory: 2G
+```
+
+## 安全加固
+
+<Warning>
+  默认配置优先考虑易用性。对于生产环境，请应用以下安全措施：
+</Warning>
+
+### 基本安全步骤
+
+1. **修改默认密码**
+   ```bash
+   # 设置用户密码
+   passwd bytebot
+   ```
+
+2. **限制网络访问**
+   ```yaml
+   # 白名单特定域名
+   environment:
+     - ALLOWED_DOMAINS=company.com,trusted-site.com
+   
+   # 或仅限制在本地网络访问
+   ports:
+     - "10.0.0.0/8:9990:9990"
+   ```
+
+## 故障排除
+
+<AccordionGroup>
+  <Accordion title="桌面端无法启动">
+    检查日志：
+    ```bash
+    docker logs bytebot-desktop
+    ```
+    常见问题：
+    - 内存不足
+    - 端口冲突
+    - 显示服务器错误
+  </Accordion>
+  
+  <Accordion title="应用程序崩溃">
+    监控资源：
+    ```bash
+    docker stats bytebot-desktop
+    ```
+    解决方案：
+    - 增加内存分配
+    - 检查磁盘空间
+    - 更新容器镜像
+  </Accordion>
+</AccordionGroup>
+
+## 最佳实践
+
+1. **定期更新**：保持基础镜像更新以获取安全补丁
+2. **持久化存储**：为重要数据挂载卷
+3. **备份配置**：将自定义设置保存在容器外部
+4. **监控资源**：跟踪 CPU/内存使用情况
+5. **清理临时文件**：定期清理以提升性能
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="快速开始" icon="rocket" href="/quickstart">
+    部署您的第一个智能体
+  </Card>
+  <Card title="API 参考" icon="code" href="/api-reference/computer-use/unified-endpoint">
+    通过编程方式控制桌面
+  </Card>
+  <Card title="智能体系统" icon="robot" href="/core-concepts/agent-system">
+    添加 AI 功能
+  </Card>
+  <Card title="密码管理" icon="key" href="/guides/password-management">
+    设置身份验证
+  </Card>
+</CardGroup>
