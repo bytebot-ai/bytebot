@@ -1,0 +1,216 @@
+---
+title: 简介
+description: "开源AI桌面代理，可自动化任何计算机任务"
+---
+
+<p align="center">
+  <img
+    className="block dark:hidden"
+    src="/logo/bytebot_transparent_logo_dark.svg"
+    alt="Bytebot Logo"
+    width="500"
+  />
+  <img
+    className="hidden dark:block"
+    src="/logo/bytebot_transparent_logo_white.svg"
+    alt="Bytebot Logo"
+    width="500"
+  />
+</p>
+
+## 什么是 Bytebot？
+
+Bytebot 是一个开源 AI 代理，能够控制计算机桌面为您完成任务。它在您自有基础设施的 Docker 容器中运行，为您提供一个可以执行以下操作的虚拟助手：
+
+- 使用任何桌面应用程序（浏览器、电子邮件、办公工具等）
+- 处理上传的文件，包括 PDF、电子表格和文档
+- 将整个文件直接读入 LLM 上下文进行快速分析
+- 自动化重复性任务，如数据录入和表单填写
+- 处理跨多个应用程序的复杂工作流
+- 无需人工监督，全天候 24/7 工作
+
+只需用简单的英语描述您需要完成的任务，Bytebot 就会找出如何执行——点击按钮、输入文本、浏览网站、阅读文档并完成任务，就像人类一样。
+
+## 为什么选择 Bytebot 而非传统 RPA？
+
+<CardGroup cols={2}>
+  <Card title="无需复杂脚本" icon="code-branch">
+    与UiPath等工具不同，无需设计流程图或编写脚本——只需自然描述任务
+  </Card>
+  <Card title="自适应智能" icon="brain">
+    基于AI的理解能力意味着Bytebot能适应UI变化而不会中断
+  </Card>
+  <Card title="视觉理解能力" icon="eye">
+    可读取和理解任何界面，不仅限于预设映射的元素
+  </Card>
+  <Card title="类人问题解决" icon="lightbulb">
+    自动处理意外弹窗、错误和变化情况
+  </Card>
+</CardGroup>
+
+## 为何选择自托管Bytebot？
+
+<CardGroup cols={2}>
+  <Card title="完全隐私保护" icon="shield">
+    您的任务和数据永远不会离开您的基础设施。所有操作都在您的服务器本地运行。
+  </Card>
+  <Card title="完全控制权" icon="sliders">
+    可自定义桌面环境，安装任何应用程序，并根据您的精确需求进行配置。
+  </Card>
+  <Card title="无使用限制" icon="infinity">
+    使用您自己的LLM API密钥，不受平台限制或额外费用影响。
+  </Card>
+  <Card title="安全隔离" icon="lock">
+    每个桌面在独立容器中运行，与主机系统完全隔离。
+  </Card>
+</CardGroup>
+
+## 实际应用场景
+
+### 企业自动化（RPA替代方案）
+
+Bytebot是下一代RPA（机器人流程自动化）。它能处理与传统工具（如UiPath）相同的复杂工作流，但具备AI驱动的自适应能力和自动身份验证功能：
+
+- **财务运营**：自动化银行门户访问（配置密码管理器扩展时包含双重认证），下载交易文件并通过多个系统进行处理
+- **合规工作流**：导航政府网站，下载监管文件，提取数据并更新合规跟踪系统
+- **多系统集成**：通过自动化UI交互，桥接缺乏API的遗留系统
+- **供应商管理**：登录供应商门户，下载发票，与内部系统对账并处理付款
+
+### 业务流程自动化
+
+- **数据核对**：从多个SaaS平台拉取报告，交叉引用数据并生成合并报告
+- **客户 onboarding**：在CRM、银行和验证系统之间导航以完成新客户设置
+- **采购订单处理**：从网页邮箱门户提取采购订单，录入ERP系统并更新库存数据库
+- **人力资源运营**：从各系统收集员工数据，更新记录并确保跨平台一致性
+
+### 开发与质量保证集成
+
+当与编码代理结合使用时，Bytebot变得更加强大：
+
+- **全栈测试**：使用编码代理生成代码，然后让Bytebot通过可视化方式测试并验证输出结果
+- **自动化调试**：让Bytebot复现用户反馈的问题，同时由编码代理分析和修复代码
+- **端到端开发**：代码代理编写功能，Bytebot进行测试，形成完整的开发闭环
+- **视觉回归测试**：通过截图对比自动检测不同部署版本间的UI变更
+
+## 工作原理
+
+<Steps>
+  <Step title="描述您的任务">
+    只需通过任务界面用自然语言告诉Bytebot您需要完成什么
+  </Step>
+  <Step title="AI规划执行动作">
+    Bytebot理解您的需求并将其分解为具体的计算机操作指令
+  </Step>
+  <Step title="执行操作">
+    Bytebot在其虚拟桌面上使用键盘和鼠标执行任务
+  </Step>
+  <Step title="实时监控或离开">
+    通过任务详情视图实时监控工作进度，或让其独立完成任务
+  </Step>
+  <Step title="获取结果">
+    接收已完成的任务输出、截图或完成确认
+  </Step>
+</Steps>
+
+## 架构概览
+
+Bytebot由四个协同工作的集成组件组成：
+
+<img src="/images/agent-architecture.png" alt="Bytebot Agent Architecture" />
+
+<CardGroup cols={2}>
+  <Card
+    title="Bytebot Desktop"
+    icon="desktop"
+    href="/core-concepts/desktop-environment"
+  >
+    基于 Ubuntu 22.04 系统，配备 XFCE4、VSCode、Firefox、Thunderbird 邮件客户端及自动化守护进程 (bytebotd)
+  </Card>
+  <Card title="AI Agent" icon="brain" href="/core-concepts/agent-system">
+    使用 LLM（Anthropic Claude、OpenAI GPT、Google Gemini）进行任务规划与执行的 NestJS 服务
+  </Card>
+  <Card
+    title="Task Interface"
+    icon="window"
+    href="/api-reference/agent/ui"
+  >
+    用于创建和管理任务的 Next.js 网络应用程序
+  </Card>
+  <Card title="REST API" icon="code" href="/api-reference/introduction">
+    提供任务管理和直接桌面控制的编程接口
+  </Card>
+</CardGroup>
+
+## 快速开始
+
+<CardGroup cols={3}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    2 分钟内启动 Bytebot
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/core-concepts/architecture">
+    了解整体架构设计
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference/introduction">
+    与您的应用程序集成
+  </Card>
+</CardGroup>
+
+## 核心功能
+
+### 🤖 自然语言控制
+
+只需告诉 Bytebot 您的需求。无需编码或复杂的自动化工具。
+
+### 🖥️ 完整桌面访问
+
+Bytebot 可使用任何可安装的应用程序——浏览器、办公工具、定制软件。
+
+### 🔒 完全隐私保护
+
+完全在您的基础设施上运行。您的数据永远不会离开您的服务器。
+
+### 🔄 两种操作模式
+
+- **自主模式**：Bytebot 独立完成任务
+- **接管模式**：您可以在需要时介入并接管控制
+
+### 🖱️ 直接桌面访问
+
+- **桌面标签页**：自由访问虚拟桌面进行设置、安装程序或手动操作
+- **任务视图**：在任务执行过程中观看并与 Bytebot 互动
+
+### 🚀 轻松部署
+
+- 在 Railway 上一键部署
+- 使用 Docker Compose 进行自托管
+- 提供 Kubernetes 的 Helm charts
+
+### 🔌 开发者友好
+
+- 提供 REST API 进行程序化控制
+- 任务管理 API
+- 可扩展架构
+- 支持 MCP（模型上下文协议）
+
+## 社区与支持
+
+<CardGroup cols={2}>
+  <Card
+    title="Discord 社区"
+    icon="discord"
+    href="https://discord.com/invite/d9ewZkWPTP"
+  >
+    加入我们的社区获取帮助、技巧和讨论
+  </Card>
+  <Card
+    title="GitHub"
+    icon="github"
+    href="https://github.com/bytebot-ai/bytebot"
+  >
+    报告问题、贡献代码或为项目点赞
+  </Card>
+</CardGroup>
+
+<Note>
+  **准备好为您的 AI 配备专属计算机了吗？** 从我们的[快速入门指南](/quickstart)开始，几分钟内即可运行您自己的 AI 桌面代理。
+</Note>

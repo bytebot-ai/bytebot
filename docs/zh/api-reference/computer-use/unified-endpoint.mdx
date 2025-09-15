@@ -1,0 +1,547 @@
+---
+title: "统一计算机操作 API"
+description: "通过单一端点控制桌面环境的所有方面"
+---
+
+## 概述
+
+统一计算机操作API通过单一端点实现对Bytebot虚拟桌面环境所有方面的精细控制。它用一个统一的接口取代了多个特定端点，可处理各种计算机操作，如鼠标移动、点击、按键等。
+
+## 端点
+
+| 方法   | URL              | 描述                                     |
+| ------ | ---------------- | ----------------------------------------------- |
+| POST   | `/computer-use`  | 在虚拟桌面中执行计算机操作 |
+
+## 请求格式
+
+所有对统一端点的请求都遵循以下格式：
+
+```json
+{
+  "action": "action_name",
+  ...action-specific parameters
+}
+```
+
+`action`参数决定要执行的操作，其余参数取决于具体的操作。
+
+## 可用操作
+
+### move_mouse
+
+将鼠标光标移动到特定位置。
+
+**参数：**
+
+| 参数            | 类型   | 必需 | 描述                       |
+| --------------- | ------ | -------- | --------------------------------- |
+| `coordinates`   | Object | 是      | 要移动到的目标坐标 |
+| `coordinates.x` | Number | 是      | X坐标                      |
+| `coordinates.y` | Number | 是      | Y坐标                      |
+
+**示例:**
+
+```json
+{
+  "action": "move_mouse",
+  "coordinates": {
+    "x": 100,
+    "y": 200
+  }
+}
+```
+
+### trace_mouse
+
+沿坐标路径移动鼠标。
+
+**参数：**
+
+| 参数          | 类型    | 必填     | 描述                                     |
+| ------------ | ------ | -------- | ----------------------------------------------- |
+| `path`       | Array  | 是       | 鼠标路径的坐标对象数组  |
+| `path[].x`   | Number | 是       | 路径中每个点的 X 坐标         |
+| `path[].y`   | Number | 是       | 路径中每个点的 Y 坐标         |
+| `holdKeys`   | Array  | 否       | 沿路径移动时按住的键        |
+
+**示例:**
+
+```json
+{
+  "action": "trace_mouse",
+  "path": [
+    { "x": 100, "y": 100 },
+    { "x": 150, "y": 150 },
+    { "x": 200, "y": 200 }
+  ],
+  "holdKeys": ["shift"]
+}
+```
+
+### click_mouse
+
+在当前或指定位置执行鼠标点击。
+
+**参数：**
+
+| 参数             | 类型    | 必填     | 描述                                           |
+| --------------- | ------ | -------- | ----------------------------------------------------- |
+| `coordinates`   | Object | 否       | 要点击的坐标（省略时使用当前位置）    |
+| `coordinates.x` | Number | 是*      | X 坐标                                          |
+| `coordinates.y` | Number | 是*      | Y 坐标                                          |
+| `button`        | String | 是       | 鼠标按钮：'left'、'right' 或 'middle'            |
+| `clickCount`    | Number | 是       | 要执行的点击次数                            |
+| `holdKeys`      | Array  | 否       | 点击时按住的键（例如 ['ctrl', 'shift']） |
+
+**示例:**
+
+```json
+{
+  "action": "click_mouse",
+  "coordinates": {
+    "x": 150,
+    "y": 250
+  },
+  "button": "left",
+  "clickCount": 2
+}
+```
+
+### press_mouse
+
+在当前或指定位置按下或释放鼠标按钮。
+
+**参数：**
+
+| 参数            | 类型   | 必填     | 描述                                              |
+| --------------- | ------ | -------- | -------------------------------------------------------- |
+| `coordinates`   | Object | 否       | 按下/释放的坐标（省略时使用当前位置） |
+| `coordinates.x` | Number | 是*      | X 坐标                                             |
+| `coordinates.y` | Number | 是*      | Y 坐标                                             |
+| `button`        | String | 是       | 鼠标按钮：'left'、'right' 或 'middle'               |
+| `press`         | String | 是       | 动作：'up' 或 'down'                                   |
+
+**示例:**
+
+```json
+{
+  "action": "press_mouse",
+  "coordinates": {
+    "x": 150,
+    "y": 250
+  },
+  "button": "left",
+  "press": "down"
+}
+```
+
+### drag_mouse
+
+点击并拖动鼠标从一个点到另一个点。
+
+**参数：**
+
+| 参数       | 类型   | 必填     | 描述                                   |
+| ------------ | ------ | -------- | --------------------------------------------- |
+| `path`       | Array  | 是       | 拖动路径的坐标对象数组 |
+| `path[].x`   | Number | 是       | 路径中每个点的 X 坐标       |
+| `path[].y`   | Number | 是       | 路径中每个点的 Y 坐标       |
+| `button`     | String | 是       | 鼠标按钮：'left'、'right' 或 'middle'    |
+| `holdKeys`   | Array  | 否       | 拖动时按住的功能键                   |
+
+**示例:**
+
+```json
+{
+  "action": "drag_mouse",
+  "path": [
+    { "x": 100, "y": 100 },
+    { "x": 200, "y": 200 }
+  ],
+  "button": "left"
+}
+```
+
+### scroll
+
+向上、向下、向左或向右滚动。
+
+**参数：**
+
+| 参数            | 类型   | 必填     | 描述                                             |
+| --------------- | ------ | -------- | ------------------------------------------------ |
+| `coordinates`   | Object | 否       | 滚动坐标（省略时使用当前位置）                   |
+| `coordinates.x` | Number | 是*      | X 坐标                                           |
+| `coordinates.y` | Number | 是*      | Y 坐标                                           |
+| `direction`     | String | 是       | 滚动方向：'up', 'down', 'left', 'right'          |
+| `scrollCount`   | Number | 是       | 滚动步数                                         |
+| `holdKeys`      | Array  | 否       | 滚动时需按住的按键                               |
+
+**示例:**
+
+```json
+{
+  "action": "scroll",
+  "direction": "down",
+  "scrollCount": 5
+}
+```
+
+### type_keys
+
+输入一系列键盘按键。
+
+**参数：**
+
+| 参数    | 类型   | 必填 | 描述                             |
+| ------- | ------ | ---- | -------------------------------- |
+| `keys`  | Array  | 是   | 按顺序输入的按键数组             |
+| `delay` | Number | 否   | 按键之间的延迟时间（毫秒）       |
+
+**示例:**
+
+```json
+{
+  "action": "type_keys",
+  "keys": ["a", "b", "c", "enter"],
+  "delay": 50
+}
+```
+
+### press_keys
+
+按下或释放键盘按键。
+
+**参数：**
+
+| 参数      | 类型    | 是否必需 | 描述                                       |
+| --------- | ------- | -------- | ------------------------------------------ |
+| `keys`    | 数组    | 是       | 要按下或释放的按键数组                     |
+| `press`   | 字符串  | 是       | 动作: 'up' 或 'down'                       |
+
+**示例:**
+
+```json
+{
+  "action": "press_keys",
+  "keys": ["ctrl", "shift", "esc"],
+  "press": "down"
+}
+```
+
+### type_text
+
+输入文本字符串，可设置延迟。
+
+**参数：**
+
+| 参数      | 类型    | 是否必需 | 描述                                           |
+| --------- | ------- | -------- | ----------------------------------------------------- |
+| `text`    | 字符串  | 是       | 要输入的文本                                      |
+| `delay`   | 数字    | 否       | 字符间的延迟时间（毫秒）（默认: 0） |
+
+**示例:**
+
+```json
+{
+  "action": "type_text",
+  "text": "Hello, Bytebot!",
+  "delay": 50
+}
+```
+
+### paste_text
+
+在当前光标位置粘贴文本。这对于标准键盘上没有的特殊字符特别有用。
+
+**参数：**
+
+| 参数      | 类型    | 是否必需 | 描述                                                              |
+| --------- | ------- | -------- | ------------------------------------------------------------------------ |
+| `text`    | 字符串  | 是       | 要粘贴的文本，包括特殊字符和表情符号               |
+
+**示例:**
+
+```json
+{
+  "action": "paste_text",
+  "text": "Special characters: ©®™€¥£ émojis 🎉"
+}
+```
+
+### wait
+
+等待指定时长。
+
+**参数：**
+
+| 参数        | 类型   | 必填     | 描述                   |
+| ---------- | ------ | -------- | ----------------------------- |
+| `duration` | 数值   | 是       | 等待时长（毫秒） |
+
+**示例:**
+
+```json
+{
+  "action": "wait",
+  "duration": 2000
+}
+```
+
+### screenshot
+
+捕获桌面截图。
+
+**参数：** 无需参数
+
+**示例:**
+
+```json
+{
+  "action": "screenshot"
+}
+```
+
+### cursor_position
+
+获取鼠标光标的当前位置。
+
+**参数：** 无需参数
+
+**示例:**
+
+```json
+{
+  "action": "cursor_position"
+}
+```
+
+### application
+
+在不同应用程序之间切换或导航至桌面/目录。
+
+**参数：**
+
+| 参数          | 类型   | 必填     | 描述                                                              |
+| ------------- | ------ | -------- | ------------------------------------------------------------------------ |
+| `application` | 字符串 | 是       | 要切换到的应用程序。请参阅下方可用选项。               |
+
+**可用应用程序：**
+
+- `firefox` - Mozilla Firefox 网页浏览器
+- `1password` - 密码管理器
+- `thunderbird` - 电子邮件客户端
+- `vscode` - Visual Studio Code 编辑器
+- `terminal` - 终端/控制台应用程序
+- `desktop` - 切换至桌面
+- `directory` - 文件管理器/目录浏览器
+
+**示例:**
+
+```json
+{
+  "action": "application",
+  "application": "firefox"
+}
+```
+
+### write_file
+
+将文件写入桌面环境文件系统。
+
+**参数：**
+
+| 参数     | 类型   | 是否必需 | 描述                                                    |
+| --------- | ------ | -------- | -------------------------------------------------------------- |
+| `path`    | String | 是       | 文件路径（绝对路径或相对于 /home/user/Desktop 的相对路径）        |
+| `data`    | String | 是       | Base64 编码的文件内容                                    |
+
+**示例:**
+
+```json
+{
+  "action": "write_file",
+  "path": "/home/user/documents/example.txt",
+  "data": "SGVsbG8gV29ybGQh"
+}
+```
+
+### read_file
+
+从桌面环境文件系统中读取文件。
+
+**参数：**
+
+| 参数     | 类型   | 是否必需 | 描述                                                    |
+| --------- | ------ | -------- | -------------------------------------------------------------- |
+| `path`    | String | 是       | 文件路径（绝对路径或相对于 /home/user/Desktop 的相对路径）        |
+
+**示例:**
+
+```json
+{
+  "action": "read_file",
+  "path": "/home/user/documents/example.txt"
+}
+```
+
+## 响应格式
+
+响应格式根据执行的操作而有所不同。
+
+### 标准响应
+
+大多数操作返回一个简单的成功响应：
+
+```json
+{
+  "success": true
+}
+```
+
+### 截图响应
+
+```json
+{
+  "success": true,
+  "data": {
+    "image": "base64_encoded_image_data"
+  }
+}
+```
+
+### 光标位置响应
+
+```json
+{
+  "success": true,
+  "data": {
+    "x": 123,
+    "y": 456
+  }
+}
+```
+
+### 写入文件响应
+
+```json
+{
+  "success": true,
+  "message": "File written successfully to: /home/user/documents/example.txt"
+}
+```
+
+### 读取文件响应
+
+```json
+{
+  "success": true,
+  "data": "SGVsbG8gV29ybGQh",
+  "name": "example.txt",
+  "size": 12,
+  "mediaType": "text/plain"
+}
+```
+
+### 错误响应
+
+```json
+{
+  "success": false,
+  "error": "Error message"
+}
+```
+
+## 代码示例
+
+### JavaScript/Node.js 示例
+
+```javascript
+const axios = require('axios');
+
+const bytebot = {
+  baseUrl: 'http://localhost:9990/computer-use/computer',
+  
+  async action(params) {
+    try {
+      const response = await axios.post(this.baseUrl, params);
+      return response.data;
+    } catch (error) {
+      console.error('Error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+  
+  // Convenience methods
+  async moveMouse(x, y) {
+    return this.action({
+      action: 'move_mouse',
+      coordinates: { x, y }
+    });
+  },
+  
+  async clickMouse(x, y, button = 'left') {
+    return this.action({
+      action: 'click_mouse',
+      coordinates: { x, y },
+      button
+    });
+  },
+  
+  async typeText(text) {
+    return this.action({
+      action: 'type_text',
+      text
+    });
+  },
+  
+  async pasteText(text) {
+    return this.action({
+      action: 'paste_text',
+      text
+    });
+  },
+  
+  async switchApplication(application) {
+    return this.action({
+      action: 'application',
+      application
+    });
+  },
+  
+  async screenshot() {
+    return this.action({ action: 'screenshot' });
+  }
+};
+
+// Example usage:
+async function example() {
+  // Switch to Firefox
+  await bytebot.switchApplication('firefox');
+  
+  // Navigate to a website
+  await bytebot.moveMouse(100, 35);
+  await bytebot.clickMouse(100, 35);
+  await bytebot.typeText('https://example.com');
+  await bytebot.action({
+    action: 'press_keys',
+    keys: ['enter'],
+    press: 'down'
+  });
+  
+  // Wait for page to load
+  await bytebot.action({
+    action: 'wait',
+    duration: 2000
+  });
+  
+  // Paste some special characters
+  await bytebot.pasteText('© 2025 Example Corp™ - €100');
+  
+  // Take a screenshot
+  const result = await bytebot.screenshot();
+  console.log('Screenshot taken!');
+}
+
+example().catch(console.error);

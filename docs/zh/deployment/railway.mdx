@@ -1,0 +1,89 @@
+---
+title: "在 Railway 上部署 Bytebot"
+description: "使用官方一键模板在 Railway 上部署完整 Bytebot 堆栈的全面指南"
+---
+
+> **TL;DR –** 点击下方按钮，添加您的 AI API 密钥（Anthropic、OpenAI 或 Google），您的个人 Bytebot 实例将在约 2 分钟内上线。
+
+[![在 Railway 上部署](https://railway.com/button.svg)](https://railway.com/deploy/bytebot?referralCode=L9lKXQ)
+
+---
+
+## 为什么选择 Railway？
+
+Railway 提供零运维的 PaaS 体验，具备私有网络和按服务日志功能，完美契合 Bytebot 的多容器架构。官方模板使用推送到 `edge` 分支的最新容器镜像将所有服务连接在一起。
+
+---
+
+## 部署内容
+
+| 服务             | 容器镜像 (edge)                                                      | 端口  | 是否暴露 | 用途                                   |
+| ---------------- | -------------------------------------------------------------------- | ----- | -------- | -------------------------------------- |
+| **bytebot-ui**   | `ghcr.io/bytebot-ai/bytebot-ui:edge`                                 | 9992  | **是**   | 面向外部呈现的 Next.js Web 用户界面     |
+| **bytebot-agent**| `ghcr.io/bytebot-ai/bytebot-agent:edge`                              | 9991  | 否       | 任务编排与 LLM 调用                    |
+| **bytebot-desktop**| `ghcr.io/bytebot-ai/bytebot-desktop:edge`                          | 9990  | 否       | 容器化的 Ubuntu + XFCE 桌面环境        |
+| **postgres**     | `postgres:14-alpine`                                                 | 5432  | 否       | 持久化存储层                           |
+
+所有内部流量均通过 Railway 的[私有网络](https://docs.railway.com/guides/private-networking)进行传输。仅 `bytebot-ui` 被分配了公共域名。
+
+---
+
+## 分步详细指南
+
+<Steps>
+  <Step title="1. 打开模板">
+    点击上方的 **Deploy on Railway** 按钮或访问 [https://railway.com/deploy/bytebot?referralCode=L9lKXQ](https://railway.com/deploy/bytebot?referralCode=L9lKXQ)。
+  </Step>
+  <Step title="2. 配置环境">
+    对于 bytebot-agent 资源，添加您的 AI API 密钥（至少选择一种）：
+    - **Anthropic**：粘贴到 `ANTHROPIC_API_KEY` 以使用 Claude 模型
+    - **OpenAI**：粘贴到 `OPENAI_API_KEY` 以使用 GPT 模型
+    - **Google**：粘贴到 `GEMINI_API_KEY` 以使用 Gemini 模型
+    
+    其他设置保持默认。
+  </Step>
+  <Step title="3. 启动部署">
+    点击 **Deploy**。Railway 将拉取预构建的镜像，创建 Postgres 数据库并在私有网络中链接所有服务。
+  </Step>
+  <Step title="4. 启动 Bytebot">
+    当构建日志显示 *"bytebot-ui: ready"* 时，点击生成的 URL（例如 `https://bytebot-ui-prod.up.railway.app`）。您应该能看到任务界面。创建任务并观看桌面流！  
+    _提示：您可以从 Railway 仪表板跟踪每个服务的日志。_
+  </Step>
+</Steps>
+
+<Note>
+  首次部署会下载多个容器层 – 预计需要约 2 分钟。后续重新部署会快得多。
+</Note>
+
+---
+
+## 私有网络与安全
+
+• **私有网络**确保代理、桌面端和数据库能够安全通信，无需将端口暴露至互联网。  
+• **公开暴露**仅限于提供静态资源和代理 WebSocket 流量的用户界面。  
+• **添加认证**可通过将用户界面置于 Railway 内置密码保护或外部提供商（如 Cloudflare Access、Auth0、OAuth 代理）之后实现。  
+• 您还可以从 Railway 仪表板将自定义域名指向用户界面，并启用 Cloudflare 以获取 WAF/CDN 保护。
+
+---
+
+## 自定义与扩展
+
+1. **更换镜像** – Fork 代码库，推送您自己的镜像并编辑模板中的 `Dockerfile` 引用。  
+2. **增加资源** – 每项服务在 Railway 中均有独立的 CPU/内存滑块。若计划运行重度自动化任务，请提升桌面端或代理的资源配额。
+
+---
+
+## 故障排除
+
+| 现象 | 可能原因 | 解决方案 |
+| ------- | ------------ | ---- |
+| Web 界面显示“连接中…” | 桌面端未就绪或私有网络配置错误 | 等待 `bytebot-desktop` 容器完成启动，或重启服务 |
+| 代理报错 `401` 或 `403` | API 密钥缺失/无效 | 在 Railway 环境变量中重新输入 AI 提供商的 API 密钥 |
+| 桌面端视频卡顿 | 免费版 Railway 限流 | 升级套餐或在桌面端设置中降低屏幕分辨率 |
+
+---
+
+## 后续步骤
+
+• 探索 [REST API](/api-reference/introduction) 以编程方式编写任务脚本。  
+• 加入我们的 [Discord](https://discord.com/invite/d9ewZkWPTP) 社区获取支持并展示您的自动化成果！

@@ -1,0 +1,290 @@
+---
+title: "Helm 部署"
+description: "使用 Helm charts 在 Kubernetes 上部署 Bytebot"
+---
+
+# 使用 Helm 在 Kubernetes 上部署 Bytebot
+
+Helm 提供了一种简单的方法在 Kubernetes 集群上部署 Bytebot。
+
+## 前置条件
+
+- Kubernetes 集群 (1.19+)
+- 已安装 Helm 3.x
+- 已配置 kubectl
+- 集群中可用内存 8GB+
+
+## 快速开始
+
+<Steps>
+  <Step title="克隆仓库">
+    ```bash
+    git clone https://github.com/bytebot-ai/bytebot.git
+    cd bytebot
+    ```
+  </Step>
+  
+  <Step title="配置 API 密钥">
+    创建一个 `values.yaml` 文件，至少包含一个 API 密钥：
+    
+    ```yaml
+    bytebot-agent:
+      apiKeys:
+        anthropic:
+          value: "sk-ant-your-key-here"
+        # 可选：添加更多提供商
+        # openai:
+        #   value: "sk-your-key-here"
+        # gemini:
+        #   value: "your-key-here"
+    ```
+  </Step>
+  
+  <Step title="安装 Bytebot">
+    ```bash
+    helm install bytebot ./helm \
+      --namespace bytebot \
+      --create-namespace \
+      -f values.yaml
+    ```
+  </Step>
+  
+  <Step title="访问 Bytebot">
+    ```bash
+    # 端口转发以进行本地访问
+    kubectl port-forward -n bytebot svc/bytebot-ui 9992:9992
+    
+    # 通过 http://localhost:9992 访问
+    ```
+  </Step>
+</Steps>
+
+## 基本配置
+
+### API 密钥
+
+配置至少一个 AI 提供商：
+
+```yaml
+bytebot-agent:
+  apiKeys:
+    anthropic:
+      value: "sk-ant-your-key-here"
+    openai:
+      value: "sk-your-key-here"
+    gemini:
+      value: "your-key-here"
+```
+
+### 资源限制（可选）
+
+根据您的需求调整资源：
+
+```yaml
+# Desktop container (where automation runs)
+desktop:
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1"
+    limits:
+      memory: "4Gi"
+      cpu: "2"
+
+# Agent (AI orchestration)
+agent:
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+```
+
+### 外部访问（可选）
+
+启用基于域名的入口访问：
+
+```yaml
+ui:
+  ingress:
+    enabled: true
+    hostname: bytebot.your-domain.com
+    tls: true
+```
+
+## 访问 Bytebot
+
+### 本地访问（推荐）
+
+```bash
+kubectl port-forward -n bytebot svc/bytebot-ui 9992:9992
+```
+
+访问地址：http://localhost:9992
+
+### 外部访问
+
+如果您配置了入口：
+
+- 访问地址：https://bytebot.your-domain.com
+
+## 验证部署
+
+检查所有 Pod 是否正在运行：
+
+```bash
+kubectl get pods -n bytebot
+```
+
+预期输出：
+
+```
+NAME                              READY   STATUS    RESTARTS   AGE
+bytebot-agent-xxxxx               1/1     Running   0          2m
+bytebot-desktop-xxxxx             1/1     Running   0          2m
+bytebot-postgresql-0              1/1     Running   0          2m
+bytebot-ui-xxxxx                 1/1     Running   0          2m
+```
+
+## 故障排除
+
+### Pod 无法启动
+
+检查 Pod 状态：
+
+```bash
+kubectl describe pod -n bytebot <pod-name>
+```
+
+常见问题：
+
+- 内存/CPU 不足：使用 `kubectl top nodes` 检查节点资源
+- 缺少 API 密钥：验证您的 values.yaml 配置
+
+### 连接问题
+
+测试服务连通性：
+
+```bash
+kubectl logs -n bytebot deployment/bytebot-agent
+```
+
+### 查看日志
+
+```bash
+# All logs
+kubectl logs -n bytebot -l app=bytebot --tail=100
+
+# Specific component
+kubectl logs -n bytebot deployment/bytebot-agent
+```
+
+## 升级指南
+
+```bash
+# Update your values.yaml as needed, then:
+helm upgrade bytebot ./helm -n bytebot -f values.yaml
+```
+
+## 卸载
+
+```bash
+# Remove Bytebot
+helm uninstall bytebot -n bytebot
+
+# Clean up namespace
+kubectl delete namespace bytebot
+```
+
+## 高级配置
+
+<AccordionGroup>
+  <Accordion title="使用外部密钥">
+    如果使用 Kubernetes 密钥管理（Vault、Sealed Secrets 等）：
+    
+    ```yaml
+    bytebot-agent:
+      apiKeys:
+        anthropic:
+          useExisting: true
+          secretName: "my-api-keys"
+          secretKey: "anthropic-key"
+    ```
+    
+    手动创建密钥：
+    ```bash
+    kubectl create secret generic my-api-keys \
+      --namespace bytebot \
+      --from-literal=anthropic-key="sk-ant-your-key"
+    ```
+  </Accordion>
+  
+  <Accordion title="LiteLLM 代理模式">
+    对于集中式 LLM 管理，使用内置的 LiteLLM 代理：
+    
+    ```bash
+    helm install bytebot ./helm \
+      -f values-proxy.yaml \
+      --namespace bytebot \
+      --create-namespace \
+      --set bytebot-llm-proxy.env.ANTHROPIC_API_KEY="your-key"
+    ```
+    
+    这提供：
+    - 集中式 API 密钥管理
+    - 请求路由和负载均衡
+    - 速率限制和重试逻辑
+  </Accordion>
+  
+  <Accordion title="自定义存储">
+    配置持久化存储：
+    
+    ```yaml
+    desktop:
+      persistence:
+        enabled: true
+        size: "20Gi"
+        storageClass: "fast-ssd"
+    
+    postgresql:
+      persistence:
+        size: "20Gi"
+        storageClass: "fast-ssd"
+    ```
+  </Accordion>
+  
+  <Accordion title="生产环境安全">
+    ```yaml
+    # 网络策略
+    networkPolicy:
+      enabled: true
+    
+    # Pod 安全
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 1000
+    
+    # 启用身份验证
+    auth:
+      enabled: true
+      type: "basic"
+      username: "admin"
+      password: "changeme"  # 生产环境中请使用密钥！
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/api-reference/introduction">
+    将 Bytebot 与您的应用程序集成
+  </Card>
+  <Card title="LiteLLM Integration" icon="plug" href="/deployment/litellm">
+    使用任何 LLM 提供商与 Bytebot 配合
+  </Card>
+</CardGroup>
+
+<Note>
+  **需要帮助？** 加入我们的 [Discord 社区](https://discord.com/invite/d9ewZkWPTP) 或查看我们的 [GitHub 讨论区](https://github.com/bytebot-ai/bytebot/discussions)。
+</Note>

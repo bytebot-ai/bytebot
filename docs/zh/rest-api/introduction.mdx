@@ -1,0 +1,76 @@
+---
+title: "简介"
+description: "Bytebot REST API 概览"
+---
+
+## Bytebot REST API
+
+Bytebot 的核心功能通过其 REST API 提供，该 API 提供了与桌面环境交互的端点。通过 API 可以实现对鼠标移动、键盘输入和屏幕捕获的程序化控制。
+
+### 基础 URL
+
+所有 API 端点都相对于基础 URL：
+
+```
+http://localhost:9990
+```
+
+端口可在运行容器时进行配置。
+
+### 认证
+
+Bytebot API 在本地访问时默认不需要身份验证。对于远程访问，应实施标准的网络安全实践。
+
+### 响应格式
+
+所有 API 响应都遵循标准 JSON 格式：
+
+```json
+{
+  "success": true,
+  "data": { ... },  // Response data specific to the action
+  "error": null     // Error message if success is false
+}
+```
+
+### 错误处理
+
+当发生错误时，API 返回：
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": "Detailed error message"
+}
+```
+
+常见 HTTP 状态码：
+
+| 状态码     | 描述                      |
+| ----------- | -------------------------------- |
+| 200         | 成功                          |
+| 400         | 错误请求 - 参数无效 |
+| 500         | 内部服务器错误            |
+
+### 可用端点
+
+<CardGroup cols={2}>
+  <Card
+    title="计算机使用"
+    icon="computer-mouse"
+    href="/rest-api/computer-use"
+  >
+    执行桌面自动化操作，如鼠标移动、点击、键盘输入和屏幕截图
+  </Card>
+  <Card title="输入追踪" icon="eye" href="/rest-api/input-tracking">
+    控制和流式传输来自桌面的键盘和鼠标事件
+  </Card>
+  <Card title="使用示例" icon="code" href="/rest-api/examples">
+    常见自动化场景的代码示例和片段
+  </Card>
+</CardGroup>
+
+### 速率限制
+
+该 API 目前未实施速率限制，但过多的请求可能会影响虚拟桌面环境的性能。

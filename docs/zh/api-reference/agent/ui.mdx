@@ -1,0 +1,150 @@
+---
+title: '任务界面'
+description: 'Bytebot 任务界面文档'
+---
+
+## Bytebot 任务界面
+
+Bytebot 任务界面提供了一个基于网页的界面，用于与 Bytebot 代理系统进行交互。它结合了操作动态和嵌入式 noVNC 查看器，让您可以实时观看它在桌面上执行任务。
+
+<img src="/static/chat-ui-overview.png" alt="Bytebot Task Detail" className="w-full max-w-4xl" />
+
+## 访问界面
+
+当运行完整的 Bytebot 代理系统时，任务界面可在以下位置访问：
+
+```
+http://localhost:9992
+```
+
+## 界面组件
+
+### 任务管理面板
+
+任务管理面板允许您：
+
+- 创建新任务
+- 查看现有任务
+- 查看任务状态和优先级
+- 选择要处理的任务
+
+<img src="/static/ui-task-management.png" alt="Task Management Panel" className="w-full max-w-4xl" />
+
+### 任务界面
+
+主任务界面提供：
+
+- 与代理的任务历史记录
+- 消息中支持 Markdown 格式
+- 自动滚动到新消息
+
+### 桌面查看器
+
+嵌入式 noVNC 查看器显示：
+
+- 桌面环境的实时视图
+- 代理操作的可视化反馈
+- 可展开以接管桌面的选项
+- 连接状态指示器
+
+## 功能特性
+
+### 任务创建
+
+要创建新任务：
+
+1. 输入任务描述
+2. 点击“开始任务”按钮（或按 Enter 键）
+
+### 对话控制
+
+任务界面支持：
+
+- 带有 Markdown 格式的文本消息
+- 查看消息中的图像内容
+- 显示工具使用操作
+- 展示工具结果
+
+### 桌面交互
+
+虽然主要用于查看，桌面面板允许：
+
+- 接管桌面
+- 实时监控代理操作
+
+## 消息类型
+
+任务界面根据 Bytebot 的内容块结构显示不同类型的消息：
+
+- **用户消息**：您的指令和查询
+- **助手消息**：来自代理的响应，可能包括：
+  - **文本内容块**：Markdown 格式的文本响应
+  - **图像内容块**：生成或捕获的图像
+  - **工具使用内容块**：正在执行的计算机操作
+  - **工具结果内容块**：计算机操作的结果
+
+消息内容结构遵循以下格式：
+
+```typescript
+interface Message {
+  id: string;
+  content: MessageContentBlock[];
+  role: Role; // "USER" or "ASSISTANT"
+  createdAt?: string;
+}
+
+interface MessageContentBlock {
+  type: string;
+  [key: string]: any;
+}
+
+interface TextContentBlock extends MessageContentBlock {
+  type: "text";
+  text: string;
+}
+
+interface ImageContentBlock extends MessageContentBlock {
+  type: "image";
+  source: {
+    type: "base64";
+    media_type: string;
+    data: string;
+  };
+}
+```
+
+## 技术细节
+
+Bytebot 任务用户界面使用以下技术构建：
+
+- **Next.js**：前端的 React 框架
+- **Tailwind CSS**：用于样式设计
+- **ReactMarkdown**：用于渲染 markdown 内容
+- **noVNC**：用于嵌入式桌面查看器
+
+## 故障排除
+
+### 连接问题
+
+如果您遇到连接问题：
+
+1. 确保所有 Bytebot 服务正在运行
+2. 检查端口 9990、9991 和 9992 是否可访问
+3. 尝试刷新浏览器
+4. 检查浏览器控制台中的错误消息
+
+### 桌面查看器问题
+
+如果桌面查看器未显示：
+
+1. 确保 Bytebot 容器正在运行
+2. 检查 noVNC 服务是否在端口 9990 可访问
+
+### 消息显示问题
+
+如果消息未正确显示：
+
+1. 检查消息内容格式是否正确
+2. 确保代理服务正在正确处理任务
+3. 检查浏览器控制台是否存在渲染错误
+4. 尝试刷新浏览器

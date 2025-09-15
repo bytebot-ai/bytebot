@@ -9,60 +9,137 @@
   },
   "favicon": "/favicon.svg",
   "navigation": {
-    "tabs": [
+    "languages": [
       {
-        "tab": "Documentation",
-        "groups": [
+        "language": "en",
+        "tabs": [
           {
-            "group": "Getting Started",
-            "pages": ["introduction", "quickstart"]
-          },
-          {
-            "group": "User Guides",
-            "pages": [
-              "guides/task-creation",
-              "guides/password-management",
-              "guides/takeover-mode"
+            "tab": "Documentation",
+            "groups": [
+              {
+                "group": "Getting Started",
+                "pages": [
+                  "introduction",
+                  "quickstart"
+                ]
+              },
+              {
+                "group": "User Guides",
+                "pages": [
+                  "guides/task-creation",
+                  "guides/password-management",
+                  "guides/takeover-mode"
+                ]
+              },
+              {
+                "group": "Deployment",
+                "pages": [
+                  "deployment/railway",
+                  "deployment/helm",
+                  "deployment/litellm"
+                ]
+              },
+              {
+                "group": "Core Concepts",
+                "pages": [
+                  "core-concepts/architecture",
+                  "core-concepts/agent-system",
+                  "core-concepts/desktop-environment",
+                  "core-concepts/rpa-comparison"
+                ]
+              }
             ]
           },
           {
-            "group": "Deployment",
-            "pages": [
-              "deployment/railway",
-              "deployment/helm",
-              "deployment/litellm"
-            ]
-          },
-          {
-            "group": "Core Concepts",
-            "pages": [
-              "core-concepts/architecture",
-              "core-concepts/agent-system",
-              "core-concepts/desktop-environment",
-              "core-concepts/rpa-comparison"
+            "tab": "API Reference",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": [
+                  "api-reference/introduction"
+                ]
+              },
+              {
+                "group": "Agent API",
+                "pages": [
+                  "api-reference/agent/tasks",
+                  "api-reference/agent/ui"
+                ]
+              },
+              {
+                "group": "Computer Control API",
+                "pages": [
+                  "api-reference/computer-use/unified-endpoint",
+                  "api-reference/computer-use/examples"
+                ]
+              }
             ]
           }
         ]
       },
-      {
-        "tab": "API Reference",
-        "groups": [
+            {
+        "language": "cn",
+        "tabs": [
           {
-            "group": "Overview",
-            "pages": ["api-reference/introduction"]
-          },
-          {
-            "group": "Agent API",
-            "pages": [
-              "api-reference/agent/tasks",
-              "api-reference/agent/ui"
+            "tab": "文档",
+            "groups": [
+              {
+                "group": "快速开始",
+                "pages": [
+                  "/zh/introduction",
+                  "/zh/quickstart"
+                ]
+              },
+              {
+                "group": "用户指南",
+                "pages": [
+                  "zh/guides/task-creation",
+                  "zh/guides/password-management",
+                  "zh/guides/takeover-mode"
+                ]
+              },
+              {
+                "group": "部署",
+                "pages": [
+                  "zh/deployment/railway",
+                  "zh/deployment/helm",
+                  "zh/deployment/litellm"
+                ]
+              },
+              {
+                "group": "核心概念",
+                "pages": [
+                  "zh/core-concepts/architecture",
+                  "zh/core-concepts/agent-system",
+                  "zh/core-concepts/desktop-environment",
+                  "zh/core-concepts/rpa-comparison"
+                ]
+              }
             ]
           },
           {
-            "group": "Computer Control API",
-            "pages": [
-              "api-reference/computer-use/unified-endpoint",
-              "api-reference/computer-use/examples"
+            "tab": "API Reference",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": [
+                  "zh/api-reference/introduction"
+                ]
+              },
+              {
+                "group": "Agent API",
+                "pages": [
+                  "zh/api-reference/agent/tasks",
+                  "zh/api-reference/agent/ui"
+                ]
+              },
+              {
+                "group": "Computer Control API",
+                "pages": [
+                  "zh/api-reference/computer-use/unified-endpoint",
+                  "zh/api-reference/computer-use/examples"
+                ]
+              }
             ]
           }
         ]
