@@ -197,3 +197,11 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # QEMU
 *.qcow2
+
+docker/start-proxy.bat
+docker/start.bat
+docker/stop-proxy.bat
+docker/stop.bat
+packages/bytebot-agent-build.bat
+packages/Dockerfile
+.prettierrc

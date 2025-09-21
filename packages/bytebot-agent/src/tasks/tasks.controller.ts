@@ -19,10 +19,12 @@ import { ANTHROPIC_MODELS } from '../anthropic/anthropic.constants';
 import { OPENAI_MODELS } from '../openai/openai.constants';
 import { GOOGLE_MODELS } from '../google/google.constants';
 import { BytebotAgentModel } from 'src/agent/agent.types';
+import { DOUBAO_MODELS } from '../doubao/doubao.constants';
 
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
+const doubaoApiKey = process.env.DOUBAO_API_KEY;
 
 const proxyUrl = process.env.BYTEBOT_LLM_PROXY_URL;
 
@@ -30,6 +32,7 @@ const models = [
   ...(anthropicApiKey ? ANTHROPIC_MODELS : []),
   ...(openaiApiKey ? OPENAI_MODELS : []),
   ...(geminiApiKey ? GOOGLE_MODELS : []),
+  ...(doubaoApiKey ? DOUBAO_MODELS : []),
 ];
 
 @Controller('tasks')

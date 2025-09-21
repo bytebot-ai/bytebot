@@ -39,6 +39,7 @@ import {
 import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
+import { DoubaoService } from '../doubao/doubao.service';
 
 @Injectable()
 export class AgentProcessor {
@@ -57,12 +58,14 @@ export class AgentProcessor {
     private readonly googleService: GoogleService,
     private readonly proxyService: ProxyService,
     private readonly inputCaptureService: InputCaptureService,
+    private readonly doubaoService: DoubaoService,
   ) {
     this.services = {
       anthropic: this.anthropicService,
       openai: this.openaiService,
       google: this.googleService,
       proxy: this.proxyService,
+      doubao: this.doubaoService,
     };
     this.logger.log('AgentProcessor initialized');
   }
