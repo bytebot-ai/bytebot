@@ -15,6 +15,7 @@ import {
   BytebotAgentInterrupt,
   BytebotAgentResponse,
 } from '../agent/agent.types';
+import { BaseProvider } from '../providers/base-provider.interface';
 import { Message, Role } from '@prisma/client';
 import { googleTools } from './google.tools';
 import {
@@ -24,24 +25,25 @@ import {
   Part,
 } from '@google/genai';
 import { v4 as uuid } from 'uuid';
-import { DEFAULT_MODEL } from './google.constants';
+import { DEFAULT_MODEL, GOOGLE_MODELS } from './google.constants';
 
 @Injectable()
-export class GoogleService implements BytebotAgentService {
+export class GoogleService implements BytebotAgentService, BaseProvider {
   private readonly google: GoogleGenAI;
   private readonly logger = new Logger(GoogleService.name);
+  private readonly apiKey: string;
 
   constructor(private readonly configService: ConfigService) {
-    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+    this.apiKey = this.configService.get<string>('GEMINI_API_KEY') || '';
 
-    if (!apiKey) {
+    if (!this.apiKey) {
       this.logger.warn(
         'GEMINI_API_KEY is not set. GoogleService will not work properly.',
       );
     }
 
     this.google = new GoogleGenAI({
-      apiKey: apiKey || 'dummy-key-for-initialization',
+      apiKey: this.apiKey || 'dummy-key-for-initialization',
     });
   }
 
@@ -293,5 +295,42 @@ export class GoogleService implements BytebotAgentService {
         text: JSON.stringify(part),
       } as TextContentBlock;
     });
+  }
+
+  // BaseProvider interface methods
+  async send(
+    systemPrompt: string,
+    messages: Message[],
+    model: string,
+    useTools: boolean,
+    signal?: AbortSignal,
+  ): Promise<BytebotAgentResponse> {
+    return this.generateMessage(systemPrompt, messages, model, useTools, signal);
+  }
+
+  async healthCheck(): Promise<boolean> {
+    if (!this.apiKey) {
+      return false;
+    }
+
+    try {
+      // Simple test with minimal token usage
+      const result = await this.google.models.generateContent({
+        model: DEFAULT_MODEL.name,
+        contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
+        config: { maxOutputTokens: 1 },
+      });
+
+      return !!result.candidates && result.candidates.length > 0;
+    } catch (error) {
+      this.logger.error('Google health check failed:', error);
+      return false;
+    }
+  }
+
+  async getAvailableModels(): Promise<string[]> {
+    // Google doesn't provide a direct API to list models
+    // Return the models we know are available
+    return GOOGLE_MODELS.map(model => model.name);
   }
 }

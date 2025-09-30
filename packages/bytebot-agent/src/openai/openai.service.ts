@@ -12,7 +12,7 @@ import {
   isComputerToolUseContentBlock,
   isImageContentBlock,
 } from '@bytebot/shared';
-import { DEFAULT_MODEL } from './openai.constants';
+import { DEFAULT_MODEL, OPENAI_MODELS } from './openai.constants';
 import { Message, Role } from '@prisma/client';
 import { openaiTools } from './openai.tools';
 import {
@@ -20,23 +20,25 @@ import {
   BytebotAgentInterrupt,
   BytebotAgentResponse,
 } from '../agent/agent.types';
+import { BaseProvider } from '../providers/base-provider.interface';
 
 @Injectable()
-export class OpenAIService implements BytebotAgentService {
+export class OpenAIService implements BytebotAgentService, BaseProvider {
   private readonly openai: OpenAI;
   private readonly logger = new Logger(OpenAIService.name);
+  private readonly apiKey: string;
 
   constructor(private readonly configService: ConfigService) {
-    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+    this.apiKey = this.configService.get<string>('OPENAI_API_KEY') || '';
 
-    if (!apiKey) {
+    if (!this.apiKey) {
       this.logger.warn(
         'OPENAI_API_KEY is not set. OpenAIService will not work properly.',
       );
     }
 
     this.openai = new OpenAI({
-      apiKey: apiKey || 'dummy-key-for-initialization',
+      apiKey: this.apiKey || 'dummy-key-for-initialization',
     });
   }
 
@@ -320,5 +322,46 @@ export class OpenAIService implements BytebotAgentService {
     }
 
     return contentBlocks;
+  }
+
+  // BaseProvider interface methods
+  async send(
+    systemPrompt: string,
+    messages: Message[],
+    model: string,
+    useTools: boolean,
+    signal?: AbortSignal,
+  ): Promise<BytebotAgentResponse> {
+    return this.generateMessage(systemPrompt, messages, model, useTools, signal);
+  }
+
+  async healthCheck(): Promise<boolean> {
+    if (!this.apiKey) {
+      return false;
+    }
+
+    try {
+      // Simple test with minimal token usage
+      const response = await this.openai.chat.completions.create({
+        model: DEFAULT_MODEL.name,
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 1,
+      });
+
+      return !!response;
+    } catch (error) {
+      this.logger.error('OpenAI health check failed:', error);
+      return false;
+    }
+  }
+
+  async getAvailableModels(): Promise<string[]> {
+    try {
+      const response = await this.openai.models.list();
+      return response.data.map(model => model.id);
+    } catch (error) {
+      this.logger.error('Failed to fetch OpenAI models:', error);
+      return OPENAI_MODELS.map(model => model.name);
+    }
   }
 }
