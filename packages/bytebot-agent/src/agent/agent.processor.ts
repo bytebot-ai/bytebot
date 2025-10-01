@@ -27,6 +27,7 @@ import { InputCaptureService } from './input-capture.service';
 import { OnEvent } from '@nestjs/event-emitter';
 import { OpenAIService } from '../openai/openai.service';
 import { GoogleService } from '../google/google.service';
+import { OpenRouterService } from '../openrouter/openrouter.service';
 import {
   BytebotAgentModel,
   BytebotAgentService,
@@ -55,6 +56,7 @@ export class AgentProcessor {
     private readonly anthropicService: AnthropicService,
     private readonly openaiService: OpenAIService,
     private readonly googleService: GoogleService,
+    private readonly openrouterService: OpenRouterService,
     private readonly proxyService: ProxyService,
     private readonly inputCaptureService: InputCaptureService,
   ) {
@@ -62,6 +64,7 @@ export class AgentProcessor {
       anthropic: this.anthropicService,
       openai: this.openaiService,
       google: this.googleService,
+      openrouter: this.openrouterService,
       proxy: this.proxyService,
     };
     this.logger.log('AgentProcessor initialized');

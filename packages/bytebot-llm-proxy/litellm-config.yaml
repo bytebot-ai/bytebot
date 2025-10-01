@@ -8,18 +8,46 @@ model_list:
     litellm_params:
       model: anthropic/claude-sonnet-4-20250514
       api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: claude-haiku-4
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: claude-3-opus
+    litellm_params:
+      model: anthropic/claude-3-opus-20240229
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: claude-3-sonnet
+    litellm_params:
+      model: anthropic/claude-3-sonnet-20240229
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: claude-3-haiku
+    litellm_params:
+      model: anthropic/claude-3-haiku-20240307
+      api_key: os.environ/ANTHROPIC_API_KEY
 
   # OpenAI Models
-  - model_name: gpt-4.1
+  - model_name: gpt-4-turbo
     litellm_params:
-      model: openai/gpt-4.1
+      model: openai/gpt-4-turbo
       api_key: os.environ/OPENAI_API_KEY
   - model_name: gpt-4o
     litellm_params:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: gpt-4
+    litellm_params:
+      model: openai/gpt-4
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+      model: openai/gpt-3.5-turbo
+      api_key: os.environ/OPENAI_API_KEY
 
-  # Gemini Models
+  # Google Gemini Models
   - model_name: gemini-2.5-pro
     litellm_params:
       model: gemini/gemini-2.5-pro
@@ -28,3 +56,175 @@ model_list:
     litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
+  - model_name: gemini-1.5-pro
+    litellm_params:
+      model: gemini/gemini-1.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: gemini-1.5-flash
+    litellm_params:
+      model: gemini/gemini-1.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: gemini-pro
+    litellm_params:
+      model: gemini/gemini-pro
+      api_key: os.environ/GEMINI_API_KEY
+
+  # OpenRouter Models
+  - model_name: openrouter-openai-gpt-4o
+    litellm_params:
+      model: openrouter/openai/gpt-4o
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-openai-gpt-4o-mini
+    litellm_params:
+      model: openrouter/openai/gpt-4o-mini
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-anthropic-claude-3.5-sonnet
+    litellm_params:
+      model: openrouter/anthropic/claude-3.5-sonnet
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-anthropic-claude-3-opus
+    litellm_params:
+      model: openrouter/anthropic/claude-3-opus
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-google-gemini-pro
+    litellm_params:
+      model: openrouter/google/gemini-pro
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-google-gemini-flash
+    litellm_params:
+      model: openrouter/google/gemini-2.5-flash
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-mistral-mistral-large
+    litellm_params:
+      model: openrouter/mistralai/mistral-large
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-meta-llama-3.1-405b
+    litellm_params:
+      model: openrouter/meta-llama/llama-3.1-405b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-meta-llama-3.1-70b
+    litellm_params:
+      model: openrouter/meta-llama/llama-3.1-70b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-meta-llama-3.1-8b
+    litellm_params:
+      model: openrouter/meta-llama/llama-3.1-8b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-nousresearch-nous-hermes-2
+    litellm_params:
+      model: openrouter/nousresearch/nous-hermes-2-mixtral-8x7b-dpo
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: openrouter-cognitivecomputations-dolphin-mixtral
+    litellm_params:
+      model: openrouter/cognitivecomputations/dolphin-mixtral-8x7b
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # Mistral AI Models
+  - model_name: mistral-large
+    litellm_params:
+      model: mistralai/mistral-large-latest
+      api_key: os.environ/MISTRAL_API_KEY
+  - model_name: mistral-medium
+    litellm_params:
+      model: mistralai/mistral-medium
+      api_key: os.environ/MISTRAL_API_KEY
+  - model_name: mistral-small
+    litellm_params:
+      model: mistralai/mistral-small
+      api_key: os.environ/MISTRAL_API_KEY
+
+  # Cohere Models
+  - model_name: command-r-plus
+    litellm_params:
+      model: cohere/command-r-plus
+      api_key: os.environ/COHERE_API_KEY
+  - model_name: command-r
+    litellm_params:
+      model: cohere/command-r
+      api_key: os.environ/COHERE_API_KEY
+  - model_name: command
+    litellm_params:
+      model: cohere/command
+      api_key: os.environ/COHERE_API_KEY
+
+  # Groq Models
+  - model_name: groq-llama-3.1-405b
+    litellm_params:
+      model: groq/llama-3.1-405b-reasoning
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: groq-llama-3.1-70b
+    litellm_params:
+      model: groq/llama-3.1-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: groq-llama-3.1-8b
+    litellm_params:
+      model: groq/llama-3.1-8b-instant
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: groq-mixtral
+    litellm_params:
+      model: groq/mixtral-8x7b-32768
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: groq-gemma2
+    litellm_params:
+      model: groq/gemma2-9b-it
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: groq-gemma
+    litellm_params:
+      model: groq/gemma-7b-it
+      api_key: os.environ/GROQ_API_KEY
+
+  # Perplexity Models
+  - model_name: pplx-sonar-medium
+    litellm_params:
+      model: perplexity/sonar-medium-chat
+      api_key: os.environ/PERPLEXITY_API_KEY
+  - model_name: pplx-sonar-small
+    litellm_params:
+      model: perplexity/sonar-small-chat
+      api_key: os.environ/PERPLEXITY_API_KEY
+  - model_name: pplx-llama-3-70b
+    litellm_params:
+      model: perplexity/llama-3-70b-instruct
+      api_key: os.environ/PERPLEXITY_API_KEY
+  - model_name: pplx-llama-3-8b
+    litellm_params:
+      model: perplexity/llama-3-8b-instruct
+      api_key: os.environ/PERPLEXITY_API_KEY
+
+  # Together AI Models
+  - model_name: together-llama-3-70b
+    litellm_params:
+      model: together_ai/meta-llama/Llama-3-70b-chat-hf
+      api_key: os.environ/TOGETHER_API_KEY
+  - model_name: together-llama-3-8b
+    litellm_params:
+      model: together_ai/meta-llama/Llama-3-8b-chat-hf
+      api_key: os.environ/TOGETHER_API_KEY
+  - model_name: together-mistral-8x7b
+    litellm_params:
+      model: together_ai/mistralai/Mixtral-8x7B-Instruct-v0.1
+      api_key: os.environ/TOGETHER_API_KEY
+
+  # DeepSeek Models
+  - model_name: deepseek-chat
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+  - model_name: deepseek-coder
+    litellm_params:
+      model: deepseek/deepseek-coder
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # Fireworks AI Models
+  - model_name: fireworks-llama-v3p1-405b
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/llama-v3p1-405b-instruct
+      api_key: os.environ/FIREWORKS_API_KEY
+  - model_name: fireworks-llama-v3p1-70b
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/llama-v3p1-70b-instruct
+      api_key: os.environ/FIREWORKS_API_KEY
+  - model_name: fireworks-llama-v3p1-8b
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/llama-v3p1-8b-instruct
+      api_key: os.environ/FIREWORKS_API_KEY

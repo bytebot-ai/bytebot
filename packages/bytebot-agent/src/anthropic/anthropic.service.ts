@@ -11,7 +11,7 @@ import {
   isUserActionContentBlock,
   isComputerToolUseContentBlock,
 } from '@bytebot/shared';
-import { DEFAULT_MODEL } from './anthropic.constants';
+import { DEFAULT_MODEL, ANTHROPIC_MODELS } from './anthropic.constants';
 import { Message, Role } from '@prisma/client';
 import { anthropicTools } from './anthropic.tools';
 import {
@@ -19,23 +19,25 @@ import {
   BytebotAgentInterrupt,
   BytebotAgentResponse,
 } from '../agent/agent.types';
+import { BaseProvider } from '../providers/base-provider.interface';
 
 @Injectable()
-export class AnthropicService implements BytebotAgentService {
+export class AnthropicService implements BytebotAgentService, BaseProvider {
   private readonly anthropic: Anthropic;
   private readonly logger = new Logger(AnthropicService.name);
+  private readonly apiKey: string;
 
   constructor(private readonly configService: ConfigService) {
-    const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
+    this.apiKey = this.configService.get<string>('ANTHROPIC_API_KEY') || '';
 
-    if (!apiKey) {
+    if (!this.apiKey) {
       this.logger.warn(
         'ANTHROPIC_API_KEY is not set. AnthropicService will not work properly.',
       );
     }
 
     this.anthropic = new Anthropic({
-      apiKey: apiKey || 'dummy-key-for-initialization',
+      apiKey: this.apiKey || 'dummy-key-for-initialization',
     });
   }
 
@@ -189,5 +191,42 @@ export class AnthropicService implements BytebotAgentService {
           } as RedactedThinkingContentBlock;
       }
     });
+  }
+
+  // BaseProvider interface methods
+  async send(
+    systemPrompt: string,
+    messages: Message[],
+    model: string,
+    useTools: boolean,
+    signal?: AbortSignal,
+  ): Promise<BytebotAgentResponse> {
+    return this.generateMessage(systemPrompt, messages, model, useTools, signal);
+  }
+
+  async healthCheck(): Promise<boolean> {
+    if (!this.apiKey) {
+      return false;
+    }
+
+    try {
+      // Simple test with minimal token usage
+      const response = await this.anthropic.messages.create({
+        model: DEFAULT_MODEL.name,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'Hi' }],
+      });
+
+      return !!response;
+    } catch (error) {
+      this.logger.error('Anthropic health check failed:', error);
+      return false;
+    }
+  }
+
+  async getAvailableModels(): Promise<string[]> {
+    // Anthropic doesn't provide a direct API to list models
+    // Return the models we know are available
+    return ANTHROPIC_MODELS.map(model => model.name);
   }
 }

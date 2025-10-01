@@ -9,6 +9,7 @@ import {
   TaskDaily01Icon,
   Home01Icon,
   ComputerIcon,
+  Settings01Icon,
 } from "@hugeicons/core-free-icons";
 import { usePathname } from "next/navigation";
 
@@ -76,6 +77,10 @@ export function Header() {
           <Link href="/desktop" className={getLinkClasses("/desktop")}>
             <HugeiconsIcon icon={ComputerIcon} className="h-4 w-4" />
             <span className="text-sm">Desktop</span>
+          </Link>
+          <Link href="/settings" className={getLinkClasses("/settings")}>
+            <HugeiconsIcon icon={Settings01Icon} className="h-4 w-4" />
+            <span className="text-sm">Settings</span>
           </Link>
           <Link
             href="https://docs.bytebot.ai/quickstart"

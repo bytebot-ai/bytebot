@@ -23,6 +23,14 @@ import { BytebotAgentModel } from 'src/agent/agent.types';
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
+const openrouterApiKey = process.env.OPENROUTER_API_KEY;
+const mistralApiKey = process.env.MISTRAL_API_KEY;
+const cohereApiKey = process.env.COHERE_API_KEY;
+const groqApiKey = process.env.GROQ_API_KEY;
+const perplexityApiKey = process.env.PERPLEXITY_API_KEY;
+const togetherApiKey = process.env.TOGETHER_API_KEY;
+const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
+const fireworksApiKey = process.env.FIREWORKS_API_KEY;
 
 const proxyUrl = process.env.BYTEBOT_LLM_PROXY_URL;
 
