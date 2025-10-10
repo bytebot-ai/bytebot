@@ -51,7 +51,7 @@ Bytebot includes a pre-configured LiteLLM proxy service that makes it easy to us
     
     This automatically:
     - Starts the `bytebot-llm-proxy` service on port 4000
-    - Configures the agent to use the proxy via `BYTEBOT_LLM_PROXY_URL`
+    - Configures the agent to use the proxy via `BYTEBOT_LLM_PROXY_URL` and the optional `BYTEBOT_LLM_PROXY_API_KEY`
     - Makes all configured models available through the proxy
   </Step>
   
@@ -304,6 +304,7 @@ services:
     environment:
       # Point to your external LiteLLM instance
       - BYTEBOT_LLM_PROXY_URL=http://your-litellm-server:4000
+      - BYTEBOT_LLM_PROXY_API_KEY=sk-your-key-here
     # ... rest of config
 ```
 
@@ -312,6 +313,7 @@ services:
 ```bash
 # Set the proxy URL before starting
 export BYTEBOT_LLM_PROXY_URL=http://your-litellm-server:4000
+export BYTEBOT_LLM_PROXY_API_KEY=sk-your-key-here
 
 # Start normally
 docker-compose -f docker/docker-compose.yml up -d
@@ -331,6 +333,7 @@ docker run -d \
 
 # Then start Bytebot with:
 export BYTEBOT_LLM_PROXY_URL=http://localhost:4000
+export BYTEBOT_LLM_PROXY_API_KEY=sk-your-key-here
 docker-compose up -d
 ```
 

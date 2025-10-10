@@ -49,6 +49,7 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/bytebotdb}
       - BYTEBOT_DESKTOP_BASE_URL=${BYTEBOT_DESKTOP_BASE_URL:-http://bytebot-desktop:9990}
       - BYTEBOT_LLM_PROXY_URL=${BYTEBOT_LLM_PROXY_URL:-http://bytebot-llm-proxy:4000}
+      - BYTEBOT_LLM_PROXY_API_KEY=${BYTEBOT_LLM_PROXY_API_KEY:-}
     depends_on:
       - postgres
     networks:
