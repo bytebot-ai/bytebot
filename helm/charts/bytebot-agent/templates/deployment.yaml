@@ -31,6 +31,10 @@ spec:
         - name: BYTEBOT_LLM_PROXY_URL
           value: {{ .Values.config.llmProxyUrl | default .Values.env.BYTEBOT_LLM_PROXY_URL | quote }}
         {{- end }}
+        {{- if or .Values.config.llmProxyApiKey .Values.env.BYTEBOT_LLM_PROXY_API_KEY }}
+        - name: BYTEBOT_LLM_PROXY_API_KEY
+          value: {{ .Values.config.llmProxyApiKey | default .Values.env.BYTEBOT_LLM_PROXY_API_KEY | quote }}
+        {{- end }}
         {{- /* Anthropic API Key */ -}}
         {{- if .Values.env.ANTHROPIC_API_KEY }}
         - name: ANTHROPIC_API_KEY

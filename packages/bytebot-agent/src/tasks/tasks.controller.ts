@@ -25,6 +25,7 @@ const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
 const proxyUrl = process.env.BYTEBOT_LLM_PROXY_URL;
+const proxyApiKey = process.env.BYTEBOT_LLM_PROXY_API_KEY;
 
 const models = [
   ...(anthropicApiKey ? ANTHROPIC_MODELS : []),
@@ -70,11 +71,18 @@ export class TasksController {
   async getModels() {
     if (proxyUrl) {
       try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+
+        if (proxyApiKey) {
+          // LiteLLM proxy is OpenAI-compatible → Bearer token expected
+          headers.Authorization = `Bearer ${proxyApiKey}`;
+        }
+
         const response = await fetch(`${proxyUrl}/model/info`, {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
         });
 
         if (!response.ok) {
