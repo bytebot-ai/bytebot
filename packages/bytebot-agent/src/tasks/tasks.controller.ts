@@ -19,6 +19,7 @@ import { ANTHROPIC_MODELS } from '../anthropic/anthropic.constants';
 import { OPENAI_MODELS } from '../openai/openai.constants';
 import { GOOGLE_MODELS } from '../google/google.constants';
 import { BytebotAgentModel } from 'src/agent/agent.types';
+import { extractContextWindow } from '../proxy/proxy.model-info';
 
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -87,13 +88,14 @@ export class TasksController {
         const proxyModels = await response.json();
 
         // Map proxy response to BytebotAgentModel format
-        const models: BytebotAgentModel[] = proxyModels.data.map(
-          (model: any) => ({
+        // extractContextWindow is async, so we use Promise.all
+        const models: BytebotAgentModel[] = await Promise.all(
+          proxyModels.data.map(async (model: any) => ({
             provider: 'proxy',
             name: model.litellm_params.model,
             title: model.model_name,
-            contextWindow: 128000,
-          }),
+            contextWindow: await extractContextWindow(model),
+          })),
         );
 
         return models;
