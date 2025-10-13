@@ -25,6 +25,7 @@ const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
 const proxyUrl = process.env.BYTEBOT_LLM_PROXY_URL;
+const proxyApiKey = process.env.BYTEBOT_LLM_PROXY_API_KEY;
 
 const models = [
   ...(anthropicApiKey ? ANTHROPIC_MODELS : []),
@@ -74,6 +75,7 @@ export class TasksController {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
+            'Authentication': `Bearer ${proxyApiKey}`
           },
         });
 

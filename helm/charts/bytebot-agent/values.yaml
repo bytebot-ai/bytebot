@@ -32,6 +32,7 @@ env:
   DATABASE_URL: ""
   BYTEBOT_DESKTOP_BASE_URL: "http://bytebot-desktop:9990"
   BYTEBOT_LLM_PROXY_URL: ""
+  BYTEBOT_LLM_PROXY_API_KEY: ""
   # Legacy API key values for backward compatibility
   ANTHROPIC_API_KEY: ""
   OPENAI_API_KEY: ""
