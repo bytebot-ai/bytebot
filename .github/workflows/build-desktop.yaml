@@ -31,7 +31,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/bytebot-ai/bytebot-desktop
+          images: ghcr.io/${{ github.repository_owner }}/bytebot-desktop
           tags: type=edge
 
       # 5. Log in to GHCR

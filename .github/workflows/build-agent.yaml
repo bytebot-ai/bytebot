@@ -24,7 +24,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/bytebot-ai/bytebot-agent
+          images: ghcr.io/${{ github.repository_owner }}/bytebot-desktop
           tags: type=edge
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
