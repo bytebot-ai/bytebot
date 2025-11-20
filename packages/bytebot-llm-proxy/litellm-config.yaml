@@ -28,3 +28,12 @@ model_list:
     litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
+
+  # Self-hosted vLLM Models
+  - model_name: VM426:Qwen2.5-VL-32B-Instruct
+    litellm_params:
+      model: openai/Qwen2.5-VL-32B-Instruct
+      api_base: https://XXX-XXX-XXX-XXX/v1
+      supports_function_calling: true
+      drop_params: true
+      temperature: 0.1
