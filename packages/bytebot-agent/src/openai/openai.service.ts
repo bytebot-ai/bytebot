@@ -12,19 +12,23 @@ import {
   isComputerToolUseContentBlock,
   isImageContentBlock,
 } from '@bytebot/shared';
-import { DEFAULT_MODEL } from './openai.constants';
+import { DEFAULT_MODEL, OPENAI_MODELS } from './openai.constants';
 import { Message, Role } from '@prisma/client';
 import { openaiTools } from './openai.tools';
 import {
   BytebotAgentService,
   BytebotAgentInterrupt,
   BytebotAgentResponse,
+  BytebotAgentModel,
 } from '../agent/agent.types';
 
 @Injectable()
 export class OpenAIService implements BytebotAgentService {
   private readonly openai: OpenAI;
   private readonly logger = new Logger(OpenAIService.name);
+  private cachedModels: BytebotAgentModel[] | null = null;
+  private modelsCacheTime: number = 0;
+  private readonly CACHE_DURATION = 3600000; // 1 hour in milliseconds
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
@@ -38,6 +42,105 @@ export class OpenAIService implements BytebotAgentService {
     this.openai = new OpenAI({
       apiKey: apiKey || 'dummy-key-for-initialization',
     });
+  }
+
+  /**
+   * Fetch available models from OpenAI API and cache them
+   */
+  async getAvailableModels(): Promise<BytebotAgentModel[]> {
+    // Return cached models if still valid
+    const now = Date.now();
+    if (
+      this.cachedModels &&
+      now - this.modelsCacheTime < this.CACHE_DURATION
+    ) {
+      return this.cachedModels;
+    }
+
+    try {
+      const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+      if (!apiKey) {
+        this.logger.warn('OPENAI_API_KEY not set, returning hardcoded models');
+        return OPENAI_MODELS;
+      }
+
+      // Fetch models from OpenAI API
+      const modelsList = await this.openai.models.list();
+      const models = modelsList.data;
+
+      // Filter for relevant chat models that support vision (images/screenshots)
+      // Exclude O1 and O3 models as they don't support image inputs
+      const availableModels: BytebotAgentModel[] = models
+        .filter(
+          (model) =>
+            model.id.startsWith('gpt-') &&
+            !model.id.startsWith('gpt-3.5') && // Exclude GPT-3.5 (no vision support)
+            !model.id.includes('instruct'), // Exclude instruct models
+        )
+        .map((model) => ({
+          provider: 'openai' as const,
+          name: model.id,
+          title: this.formatModelTitle(model.id),
+          contextWindow: this.getContextWindow(model.id),
+        }))
+        .sort((a, b) => {
+          // Sort by priority: gpt-4o variants first, then gpt-4 variants
+          const priority = (name: string) => {
+            if (name.includes('gpt-4o')) return 0;
+            if (name.includes('gpt-4.1')) return 1;
+            if (name.includes('gpt-4')) return 2;
+            if (name.includes('gpt-5')) return 3;
+            return 4;
+          };
+          return priority(a.name) - priority(b.name);
+        });
+
+      if (availableModels.length > 0) {
+        this.cachedModels = availableModels;
+        this.modelsCacheTime = now;
+        this.logger.log(
+          `Fetched ${availableModels.length} models from OpenAI API`,
+        );
+        return availableModels;
+      } else {
+        this.logger.warn(
+          'No suitable models found from OpenAI API, using hardcoded list',
+        );
+        return OPENAI_MODELS;
+      }
+    } catch (error) {
+      this.logger.error(`Failed to fetch models from OpenAI: ${error.message}`);
+      return OPENAI_MODELS;
+    }
+  }
+
+  /**
+   * Format model ID into a human-readable title
+   */
+  private formatModelTitle(modelId: string): string {
+    // Convert model IDs like "gpt-4o-mini" to "GPT-4o Mini"
+    return modelId
+      .split('-')
+      .map((part) => {
+        if (part === 'gpt') return 'GPT';
+        if (part.match(/^\d/)) return part; // Keep numbers as-is
+        return part.charAt(0).toUpperCase() + part.slice(1);
+      })
+      .join('-')
+      .replace(/-/g, ' ');
+  }
+
+  /**
+   * Get estimated context window for a model
+   */
+  private getContextWindow(modelId: string): number {
+    if (modelId.includes('gpt-4o')) return 128000;
+    if (modelId.includes('gpt-4-turbo')) return 128000;
+    if (modelId.includes('gpt-4')) return 8192;
+    if (modelId.includes('o1')) return 128000;
+    if (modelId.includes('o3')) return 200000;
+    if (modelId.includes('gpt-3.5')) return 16385;
+    return 4096; // Default fallback
   }
 
   async generateMessage(

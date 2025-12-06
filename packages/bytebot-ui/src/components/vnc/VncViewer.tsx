@@ -39,6 +39,7 @@ export function VncViewer({ viewOnly = true }: VncViewerProps) {
           url={wsUrl}
           scaleViewport
           viewOnly={viewOnly}
+          showDotCursor={true}
           style={{ width: "100%", height: "100%" }}
         />
       )}

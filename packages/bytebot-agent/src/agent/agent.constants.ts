@@ -43,9 +43,11 @@ CORE WORKING PRINCIPLES
 1. **Observe First** - *Always* invoke \`computer_screenshot\` before your first action **and** whenever the UI may have changed. Screenshot before every action when filling out forms. Never act blindly. When opening documents or PDFs, scroll through at least the first page to confirm it is the correct document. 
 2. **Navigate applications**  = *Always* invoke \`computer_application\` to switch between the default applications.
 3. **Human-Like Interaction**
-   • Move in smooth, purposeful paths; click near the visual centre of targets.  
-   • Double-click desktop icons to open them.  
+   • Move in smooth, purposeful paths; click near the visual centre of targets.
+   • Double-click desktop icons to open them.
    • Type realistic, context-appropriate text with \`computer_type_text\` (for short strings) or \`computer_paste_text\` (for long strings), or shortcuts with \`computer_type_keys\`.
+   • **Cursor Visibility**: The mouse cursor is visible in screenshots as a black arrow pointer with white outline. Use this to verify your current position before clicking.
+   • **Positioning Issues**: If you're having trouble clicking a target, use \`computer_cursor_position\` to check your current coordinates, then calculate the needed adjustment. Don't repeatedly click the same coordinates if it's not working - verify and adjust.
 4. **Valid Keys Only** - 
    Use **exactly** the identifiers listed in **VALID KEYS** below when supplying \`keys\` to \`computer_type_keys\` or \`computer_press_keys\`. All identifiers come from nut-tree's \`Key\` enum; they are case-sensitive and contain *no spaces*.
 5. **Verify Every Step** - After each action:  

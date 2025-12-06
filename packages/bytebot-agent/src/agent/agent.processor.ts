@@ -182,7 +182,36 @@ export class AgentProcessor {
         `Sending ${messages.length} messages to LLM for processing`,
       );
 
-      const model = task.model as unknown as BytebotAgentModel;
+      // Resolve the model - task.model can be either a string (model name) or an object
+      let model: BytebotAgentModel;
+
+      if (typeof task.model === 'string') {
+        // Old format: task.model is a string (model name)
+        const modelName = task.model;
+
+        // Determine provider from model name
+        if (modelName.startsWith('gpt-') || modelName.startsWith('o1-') || modelName.startsWith('o3-')) {
+          model = { provider: 'openai', name: modelName, title: modelName, contextWindow: 128000 };
+        } else if (modelName.startsWith('claude-')) {
+          model = { provider: 'anthropic', name: modelName, title: modelName, contextWindow: 200000 };
+        } else if (modelName.startsWith('gemini-')) {
+          model = { provider: 'google', name: modelName, title: modelName, contextWindow: 128000 };
+        } else {
+          // Try to get model from OpenAI's available models list
+          const availableModels = await this.openaiService.getAvailableModels();
+          const foundModel = availableModels.find(m => m.name === modelName);
+          if (foundModel) {
+            model = foundModel;
+          } else {
+            // Default to openai if no match found
+            model = { provider: 'openai', name: modelName, title: modelName, contextWindow: 128000 };
+          }
+        }
+      } else {
+        // New format: task.model is already a BytebotAgentModel object
+        model = task.model as unknown as BytebotAgentModel;
+      }
+
       let agentResponse: BytebotAgentResponse;
 
       const service = this.services[model.provider];

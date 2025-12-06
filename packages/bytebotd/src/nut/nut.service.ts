@@ -11,6 +11,7 @@ import {
 } from '@nut-tree-fork/nut-js';
 import { spawn } from 'child_process';
 import * as path from 'path';
+import { overlayeCursorOnScreenshot } from './cursor-overlay';
 
 /**
  * Enum representing key codes supported by nut-js.
@@ -463,21 +464,59 @@ export class NutService {
   }
 
   /**
-   * Takes a screenshot of the screen.
+   * Takes a screenshot of the screen with cursor overlay.
    *
+   * @param includeCursor Whether to include the mouse cursor in the screenshot (default: true)
    * @returns A Promise that resolves with a Buffer containing the image.
    */
-  async screendump(): Promise<Buffer> {
+  async screendump(includeCursor: boolean = true): Promise<Buffer> {
     const filename = `screenshot-${Date.now()}.png`;
     const filepath = path.join(this.screenshotDir, filename);
     this.logger.log(`Taking screenshot to ${filepath}`);
 
     try {
+      // Get cursor position before taking screenshot
+      let cursorPosition: { x: number; y: number } | null = null;
+      if (includeCursor) {
+        try {
+          cursorPosition = await mouse.getPosition();
+          this.logger.log(
+            `Cursor position: (${cursorPosition.x}, ${cursorPosition.y})`,
+          );
+        } catch (cursorError) {
+          this.logger.warn(
+            `Failed to get cursor position: ${cursorError.message}`,
+          );
+        }
+      }
+
       // Take screenshot
       await screen.capture(filename, FileType.PNG, this.screenshotDir);
 
-      // Read the file back and return as buffer
-      return await import('fs').then((fs) => fs.promises.readFile(filepath));
+      // Read the file back
+      const screenshotBuffer = await import('fs').then((fs) =>
+        fs.promises.readFile(filepath),
+      );
+
+      // Overlay cursor if position was captured
+      if (includeCursor && cursorPosition) {
+        try {
+          const withCursor = await overlayeCursorOnScreenshot(
+            screenshotBuffer,
+            cursorPosition.x,
+            cursorPosition.y,
+          );
+          this.logger.log('Cursor overlay applied to screenshot');
+          return withCursor;
+        } catch (overlayError) {
+          this.logger.warn(
+            `Failed to overlay cursor: ${overlayError.message}. Returning screenshot without cursor.`,
+          );
+          return screenshotBuffer;
+        }
+      }
+
+      return screenshotBuffer;
     } catch (error) {
       this.logger.error(`Error taking screenshot: ${error.message}`);
       throw error;

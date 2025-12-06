@@ -19,6 +19,7 @@ import { ANTHROPIC_MODELS } from '../anthropic/anthropic.constants';
 import { OPENAI_MODELS } from '../openai/openai.constants';
 import { GOOGLE_MODELS } from '../google/google.constants';
 import { BytebotAgentModel } from 'src/agent/agent.types';
+import { OpenAIService } from '../openai/openai.service';
 
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -26,17 +27,12 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
 
 const proxyUrl = process.env.BYTEBOT_LLM_PROXY_URL;
 
-const models = [
-  ...(anthropicApiKey ? ANTHROPIC_MODELS : []),
-  ...(openaiApiKey ? OPENAI_MODELS : []),
-  ...(geminiApiKey ? GOOGLE_MODELS : []),
-];
-
 @Controller('tasks')
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
     private readonly messagesService: MessagesService,
+    private readonly openaiService: OpenAIService,
   ) {}
 
   @Post()
@@ -107,6 +103,31 @@ export class TasksController {
         );
       }
     }
+
+    // Fetch models dynamically from providers
+    const models: BytebotAgentModel[] = [];
+
+    // Add Anthropic models if API key is present
+    if (anthropicApiKey) {
+      models.push(...ANTHROPIC_MODELS);
+    }
+
+    // Fetch OpenAI models dynamically if API key is present
+    if (openaiApiKey) {
+      try {
+        const openaiModels = await this.openaiService.getAvailableModels();
+        models.push(...openaiModels);
+      } catch (error) {
+        // Fallback to hardcoded models if fetch fails
+        models.push(...OPENAI_MODELS);
+      }
+    }
+
+    // Add Google models if API key is present
+    if (geminiApiKey) {
+      models.push(...GOOGLE_MODELS);
+    }
+
     return models;
   }
 
