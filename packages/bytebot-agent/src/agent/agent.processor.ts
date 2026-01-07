@@ -40,6 +40,8 @@ import { SummariesService } from '../summaries/summaries.service';
 import { handleComputerToolUse } from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
 
+import { ConfigService } from '@nestjs/config';
+
 @Injectable()
 export class AgentProcessor {
   private readonly logger = new Logger(AgentProcessor.name);
@@ -47,6 +49,7 @@ export class AgentProcessor {
   private isProcessing = false;
   private abortController: AbortController | null = null;
   private services: Record<string, BytebotAgentService> = {};
+  private recentActions: string[] = [];
 
   constructor(
     private readonly tasksService: TasksService,
@@ -57,6 +60,7 @@ export class AgentProcessor {
     private readonly googleService: GoogleService,
     private readonly proxyService: ProxyService,
     private readonly inputCaptureService: InputCaptureService,
+    private readonly configService: ConfigService,
   ) {
     this.services = {
       anthropic: this.anthropicService,
@@ -99,6 +103,7 @@ export class AgentProcessor {
     if (this.currentTaskId === taskId && this.isProcessing) {
       this.logger.log(`Task resume event received for task ID: ${taskId}`);
       this.abortController = new AbortController();
+      this.recentActions = []; // Reset loop detection on resume
 
       void this.runIteration(taskId);
     }
@@ -122,6 +127,7 @@ export class AgentProcessor {
     this.isProcessing = true;
     this.currentTaskId = taskId;
     this.abortController = new AbortController();
+    this.recentActions = []; // Reset loop detection
 
     // Kick off the first iteration without blocking the caller
     void this.runIteration(taskId);
@@ -185,7 +191,24 @@ export class AgentProcessor {
       const model = task.model as unknown as BytebotAgentModel;
       let agentResponse: BytebotAgentResponse;
 
-      const service = this.services[model.provider];
+      let service = this.services[model.provider];
+
+      // Check for forced proxy usage
+      if (this.configService.get<boolean>('LLM_FORCE_PROXY', false)) {
+        service = this.proxyService;
+      }
+
+      // Fallback for unknown providers if enabled
+      if (
+        !service &&
+        this.configService.get<boolean>('LLM_USE_PROXY_FALLBACK', true)
+      ) {
+        this.logger.log(
+          `Using proxy service for unknown provider: ${model.provider}`,
+        );
+        service = this.proxyService;
+      }
+
       if (!service) {
         this.logger.warn(
           `No service found for model provider: ${model.provider}`,
@@ -308,6 +331,31 @@ export class AgentProcessor {
 
       for (const block of messageContentBlocks) {
         if (isComputerToolUseContentBlock(block)) {
+          // Loop Detection Logic
+          const actionSignature = `${block.name}:${JSON.stringify(block.input)}`;
+          this.recentActions.push(actionSignature);
+          if (this.recentActions.length > 5) {
+            this.recentActions.shift();
+          }
+
+          // Check for exact repetition of the last 3 actions
+          if (
+            this.recentActions.length >= 3 &&
+            this.recentActions[this.recentActions.length - 1] ===
+              this.recentActions[this.recentActions.length - 2] &&
+            this.recentActions[this.recentActions.length - 2] ===
+              this.recentActions[this.recentActions.length - 3]
+          ) {
+            this.logger.warn(
+              `Loop detected for task ${taskId}. Action repeated 3 times: ${block.name}`,
+            );
+            // In the future, we can inject a "system" message telling the LLM to stop.
+            // For now, we interrupt the loop to prevent infinite billing/hanging.
+            throw new Error(
+              'Self-Correction: Loop detected. The agent is repeating the same action.',
+            );
+          }
+
           const result = await handleComputerToolUse(block, this.logger);
           generatedToolResults.push(result);
         }
