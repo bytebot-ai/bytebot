@@ -19,6 +19,7 @@ import { ANTHROPIC_MODELS } from '../anthropic/anthropic.constants';
 import { OPENAI_MODELS } from '../openai/openai.constants';
 import { GOOGLE_MODELS } from '../google/google.constants';
 import { BytebotAgentModel } from 'src/agent/agent.types';
+import { getCustomModels } from '../config';
 
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -30,6 +31,7 @@ const models = [
   ...(anthropicApiKey ? ANTHROPIC_MODELS : []),
   ...(openaiApiKey ? OPENAI_MODELS : []),
   ...(geminiApiKey ? GOOGLE_MODELS : []),
+  ...getCustomModels(),
 ];
 
 @Controller('tasks')

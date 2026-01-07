@@ -13,8 +13,16 @@ const hostname = process.env.HOSTNAME || "localhost";
 const port = parseInt(process.env.PORT || "9992", 10);
 
 // Backend URLs
-const BYTEBOT_AGENT_BASE_URL = process.env.BYTEBOT_AGENT_BASE_URL;
+const BYTEBOT_AGENT_BASE_URL =
+  process.env.BYTEBOT_AGENT_BASE_URL || "http://bytebot-agent:9991";
 const BYTEBOT_DESKTOP_VNC_URL = process.env.BYTEBOT_DESKTOP_VNC_URL;
+
+if (!BYTEBOT_AGENT_BASE_URL) {
+  console.error(
+    "CRITICAL: BYTEBOT_AGENT_BASE_URL environment variable is missing.",
+  );
+  process.exit(1);
+}
 
 const app = next({ dev, hostname, port });
 
