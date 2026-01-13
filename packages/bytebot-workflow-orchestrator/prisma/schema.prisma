@@ -1,0 +1,2783 @@
+// ByteBot Workflow Orchestrator - Prisma Schema
+// v1.0.0: Defines workflow, workspace, and node entities
+//
+// This schema supports the Option C (Hybrid) architecture:
+// - Orchestrator owns the DB entity for Workspace (lifecycle, locking)
+// - Task-controller owns K8s resources (PVC, Pod)
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["workflow_orchestrator"]
+}
+
+// All models use the workflow_orchestrator schema to avoid conflicts
+// with existing tables in the shared database
+
+// ============================================================================
+// Workspace Entity
+// Represents a persistent workspace environment for workflow execution
+// ============================================================================
+
+model Workspace {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  // v1.1.0: Status now includes PENDING, CREATING, READY, WAITING_FOR_CAPACITY, HIBERNATED, TERMINATED, FAILED
+  status    String   @default("PENDING")
+
+  // Persistence configuration (passed to task-controller)
+  persistenceEnabled Boolean  @default(true) @map("persistence_enabled")
+  storageClass       String?  @map("storage_class")
+  storageSize        String?  @map("storage_size")
+
+  // Desktop endpoint caching (updated when workspace is ready)
+  desktopEndpoint String? @map("desktop_endpoint")
+  vncEndpoint     String? @map("vnc_endpoint")
+
+  // Simple locking (for backward compatibility)
+  lockedBy String?   @map("locked_by")
+  lockedAt DateTime? @map("locked_at")
+
+  // Granular locking for desktop tool batches
+  // Lock is held ONLY during active desktop tool execution
+  // NOT for the entire node run (allows concurrent non-desktop work)
+  lockOwnerNodeRunId String?   @map("lock_owner_node_run_id")
+  lockAcquiredAt     DateTime? @map("lock_acquired_at")
+  lockExpiresAt      DateTime? @map("lock_expires_at") // 30-60 second leases
+
+  // Health tracking
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+
+  // Error tracking
+  error String?
+
+  // v1.1.0: Provisioning tracking (prevents runaway loop bug)
+  // Tracks attempts and timing for idempotent provisioning with backoff
+  provisioningAttemptCount  Int       @default(0) @map("provisioning_attempt_count")
+  lastProvisioningAttemptAt DateTime? @map("last_provisioning_attempt_at")
+  // v1.5.0: DB-driven retry gating (prevents tight loop bug)
+  // When set, the orchestrator loop will skip processing until this time
+  nextAttemptAt             DateTime? @map("next_attempt_at")
+  // v1.5.0: Tracks last activity emission time for throttling
+  lastActivityEmittedAt     DateTime? @map("last_activity_emitted_at")
+
+  // v1.2.0: Hibernation tracking (prevents orphan pods)
+  // Tracks hibernation attempts to retry on failure and enable GC cleanup
+  hibernationAttemptCount  Int       @default(0) @map("hibernation_attempt_count")
+  lastHibernationAttemptAt DateTime? @map("last_hibernation_attempt_at")
+  hibernationError         String?   @map("hibernation_error")
+
+  // Timestamps
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  terminatedAt DateTime? @map("terminated_at")
+
+  // Session hints (for faster resume after hibernation)
+  lastKnownUrl    String? @map("last_known_url")
+  sessionMetadata Json?   @map("session_metadata")
+
+  // Relations
+  workflowRun WorkflowRun?
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([lockOwnerNodeRunId])
+  @@index([lockExpiresAt])
+  @@map("workspaces")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Workflow Run Entity
+// Represents an instance of a workflow execution
+// ============================================================================
+
+model WorkflowRun {
+  id          String   @id
+  workspaceId String   @unique @map("workspace_id")
+  tenantId    String   @map("tenant_id")
+  templateId  String?  @map("template_id")  // Reference to workflow template
+
+  // Metadata
+  name        String
+  description String?
+  status      String   @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+
+  // Error tracking
+  error String?
+
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  workspace Workspace     @relation(fields: [workspaceId], references: [id])
+  nodes     WorkflowNode[]
+  goalRun   GoalRun?      // Reverse relation - a workflow run may belong to a goal run
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([templateId])
+  @@index([createdAt])
+  @@map("workflow_runs")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Workflow Node Entity (DEFINITION)
+// Represents the definition of a step within a workflow
+// Runtime state is tracked separately in WorkflowNodeRun
+// ============================================================================
+
+model WorkflowNode {
+  id            String   @id
+  workflowRunId String   @map("workflow_run_id")
+
+  // Stable key for referencing across versions (e.g., "step_1", "login_step")
+  nodeKey String? @map("node_key")
+
+  // Node definition
+  name   String
+  type   String  // TASK, DECISION, PARALLEL, WAIT
+  config Json    // Node-specific configuration
+  order  Int     @default(0) // Execution order hint
+
+  // Dependencies (array of node IDs that must complete before this node)
+  dependencies String[] @default([])
+
+  // Runtime state (for backward compatibility - new code should use WorkflowNodeRun)
+  status             String    @default("PENDING") // PENDING, READY, RUNNING, COMPLETED, FAILED, SKIPPED
+  output             Json?     // Output from execution
+  error              String?   // Error message if failed
+  startedAt          DateTime? @map("started_at")
+  completedAt        DateTime? @map("completed_at")
+  durationMs         Int?      @map("duration_ms")
+  dependencyResolved Boolean   @default(false) @map("dependency_resolved")
+
+  // Tool configuration
+  allowedTools     String[] @default([]) @map("allowed_tools")     // ["search_web_search", "weather_get_current"]
+  gatewayToolsOnly Boolean  @default(false) @map("gateway_tools_only") // No desktop access
+  highRiskTools    String[] @default([]) @map("high_risk_tools")   // ["communications_send_email"]
+
+  // Retry configuration
+  maxRetries Int @default(3) @map("max_retries")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  workflowRun WorkflowRun       @relation(fields: [workflowRunId], references: [id])
+  nodeRuns    WorkflowNodeRun[]
+
+  @@unique([workflowRunId, nodeKey])
+  @@index([workflowRunId])
+  @@index([type])
+  @@index([order])
+  @@index([status])
+  @@map("workflow_nodes")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Workflow Node Run Entity (RUNTIME STATE)
+// Represents an execution attempt of a workflow node
+// Supports retries with full history of each attempt
+// ============================================================================
+
+model WorkflowNodeRun {
+  id     String @id @default(cuid())
+  nodeId String @map("node_id")
+
+  // Attempt tracking
+  attempt Int @default(1)
+
+  // Execution state
+  status String @default("PENDING") // PENDING, READY, RUNNING, SUCCEEDED, FAILED, SKIPPED, WAITING_FOR_APPROVAL
+
+  // Input/Output
+  input  Json? // Input provided to this node run
+  output Json? // Output from successful execution
+  error  String? // Error message if failed
+
+  // Checkpointing (for long-running nodes)
+  checkpoint Json? // Intermediate state for resume
+
+  // Performance tracking
+  durationMs Int? @map("duration_ms")
+
+  // Desktop tool locking (granular - per tool batch, not per node)
+  // Lock is acquired only when desktop tools are about to execute
+  // and released immediately after the batch completes
+  desktopLockAcquiredAt DateTime? @map("desktop_lock_acquired_at")
+
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  node             WorkflowNode      @relation(fields: [nodeId], references: [id])
+  approvalRequests ApprovalRequest[]
+
+  @@unique([nodeId, attempt])
+  @@index([nodeId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("workflow_node_runs")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Approval Request Entity
+// For high-risk actions that require human approval
+// ============================================================================
+
+model ApprovalRequest {
+  id        String @id @default(cuid())
+  nodeRunId String @map("node_run_id")
+
+  // Action identification
+  actionHash String @map("action_hash") // Deterministic hash of the action
+  toolName   String @map("tool_name")   // "communications_send_email"
+  toolParams Json   @map("tool_params") // Full parameters
+
+  // Preview data for approver
+  previewData Json? @map("preview_data") // { recipient, subject, bodyPreview }
+
+  // Status
+  status     String   @default("PENDING") // PENDING, APPROVED, REJECTED, EXPIRED
+  expiresAt  DateTime @map("expires_at")
+
+  // Approval info
+  approvedBy String?   @map("approved_by")
+  approvedAt DateTime? @map("approved_at")
+  rejectedBy String?   @map("rejected_by")
+  rejectedAt DateTime? @map("rejected_at")
+  reason     String?   // Rejection reason or approval note
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  nodeRun WorkflowNodeRun @relation(fields: [nodeRunId], references: [id])
+  userPrompts UserPrompt[]
+
+  @@unique([nodeRunId, actionHash])
+  @@index([nodeRunId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("approval_requests")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Idempotency Record Entity
+// Ensures high-risk actions execute exactly once
+// ============================================================================
+
+model IdempotencyRecord {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique @map("idempotency_key") // "{nodeRunId}:{actionHash}"
+  actionHash     String   @map("action_hash")
+
+  // Execution state
+  status String @default("PROCESSING") // PROCESSING, COMPLETED, FAILED
+
+  // Result (cached for idempotent returns)
+  result       Json?
+  errorMessage String? @map("error_message")
+
+  // TTL
+  expiresAt DateTime @map("expires_at")
+
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  @@index([actionHash])
+  @@index([expiresAt])
+  @@map("idempotency_records")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Workflow Template Entity (Optional - for reusable workflows)
+// ============================================================================
+
+model WorkflowTemplate {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+
+  // Template definition
+  name        String
+  description String?
+  version     String   @default("1.0.0")
+  nodes       Json     // Array of node definitions
+
+  // Feature flags and settings
+  settings Json @default("{}")
+
+  // Audit
+  createdBy String?   @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId])
+  @@map("workflow_templates")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Outbox Event Entity (for transactional event publishing)
+// ============================================================================
+
+model OutboxEvent {
+  id          String   @id @default(cuid())
+  aggregateId String   @map("aggregate_id")
+  eventType   String   @map("event_type")
+  payload     Json
+
+  // Processing state
+  processedAt DateTime? @map("processed_at")
+  retryCount  Int       @default(0) @map("retry_count")
+  error       String?
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([processedAt])
+  @@index([eventType])
+  @@index([aggregateId])
+  @@map("outbox_events")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Outbox Entity (Stark Fix)
+// Reliable, idempotent notifications with a durable dedupeKey
+// ============================================================================
+
+model Outbox {
+  id        String @id @default(cuid())
+
+  // Monotonic event sequence (for cursor-based replay)
+  // NOTE: nullable for backward compatibility with existing rows.
+  eventSequence BigInt? @map("event_sequence")
+
+  // Idempotency
+  dedupeKey String @unique @map("dedupe_key")
+
+  // Event classification
+  aggregateId String? @map("aggregate_id")
+  eventType   String  @map("event_type")
+  payload     Json
+
+  // Processing state
+  processedAt DateTime? @map("processed_at")
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at")
+  retryCount  Int       @default(0) @map("retry_count")
+  error       String?
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([processedAt])
+  @@index([nextAttemptAt])
+  @@index([eventType])
+  @@index([aggregateId])
+  @@index([eventSequence])
+  @@map("outbox")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Feature Flag Entity (for progressive rollout)
+// ============================================================================
+
+model FeatureFlag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  enabled   Boolean  @default(false)
+
+  // Targeting
+  tenantIds String[] @default([]) @map("tenant_ids") // Empty = all tenants
+  percentage Int     @default(100) // 0-100 for gradual rollout
+
+  // Metadata
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("feature_flags")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Post-M5: Webhook Configuration Entity
+// For notification webhooks when approvals are requested/decided
+// ============================================================================
+
+model WebhookConfig {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Webhook endpoint
+  url    String
+  secret String // HMAC secret for signature
+
+  // Events to send (array of WebhookEventType)
+  events String[] // ["approval.requested", "approval.approved", ...]
+
+  // Status
+  enabled Boolean @default(true)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId])
+  @@index([tenantId, enabled])
+  @@map("webhook_configs")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Post-M5: Webhook Delivery Record Entity
+// Tracks webhook delivery attempts for debugging and monitoring
+// ============================================================================
+
+model WebhookDelivery {
+  id        String @id @default(cuid())
+  webhookId String @map("webhook_id")
+  eventId   String @map("event_id") // Unique event ID for idempotency
+
+  // Delivery result
+  success    Boolean
+  statusCode Int?    @map("status_code")
+  error      String?
+  attempts   Int     @default(1)
+
+  // Timestamps
+  deliveredAt DateTime? @map("delivered_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  webhook WebhookConfig @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([eventId])
+  @@index([createdAt])
+  @@map("webhook_deliveries")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Post-M5: Audit Log Entity
+// Immutable compliance audit trail for approval actions
+// ============================================================================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  timestamp DateTime @default(now())
+
+  // Event classification
+  eventType String @map("event_type")
+
+  // WHO - Actor information
+  actorType      String  @map("actor_type") // 'user', 'system', 'agent'
+  actorId        String? @map("actor_id")
+  actorEmail     String? @map("actor_email")
+  actorName      String? @map("actor_name")
+  actorIpAddress String? @map("actor_ip_address")
+  actorUserAgent String? @map("actor_user_agent")
+
+  // WHAT - Resource being acted upon
+  resourceType String  @map("resource_type") // 'approval', 'webhook', 'workflow', 'node'
+  resourceId   String  @map("resource_id")
+  resourceName String? @map("resource_name")
+
+  // WHERE - Context
+  tenantId      String  @map("tenant_id")
+  workspaceId   String? @map("workspace_id")
+  workflowRunId String? @map("workflow_run_id")
+  nodeRunId     String? @map("node_run_id")
+  requestId     String? @map("request_id")
+
+  // WHY - Action details
+  actionType    String  @map("action_type")
+  actionReason  String? @map("action_reason")
+  previousState String? @map("previous_state")
+  newState      String? @map("new_state")
+
+  // Additional metadata (JSON for flexibility)
+  metadata Json?
+
+  // Retention (for cleanup)
+  expiresAt DateTime @map("expires_at")
+
+  // Immutable - no updatedAt field
+  @@index([tenantId])
+  @@index([tenantId, timestamp])
+  @@index([resourceType, resourceId])
+  @@index([eventType])
+  @@index([actorId])
+  @@index([expiresAt])
+  @@map("audit_logs")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Phase 7: Multi-Agent Orchestration
+// ============================================================================
+
+// ============================================================================
+// Agent Registry Entity
+// Tracks available agent instances for task dispatch
+// Implements the Supervisor/Hierarchical orchestration pattern
+// ============================================================================
+
+model Agent {
+  id       String @id @default(cuid())
+  name     String // Human-readable agent name
+  endpoint String // Base URL (e.g., "http://bytebot-agent.bytebot.svc.cluster.local:8080")
+
+  // Agent identification
+  podName   String? @map("pod_name")   // K8s pod name for correlation
+  nodeIp    String? @map("node_ip")    // K8s node IP for locality-aware routing
+  namespace String  @default("bytebot") // K8s namespace
+
+  // Status tracking
+  status          String   @default("STARTING") // STARTING, HEALTHY, UNHEALTHY, DRAINING, OFFLINE
+  lastHeartbeatAt DateTime @default(now()) @map("last_heartbeat_at")
+
+  // Capacity management
+  maxConcurrentTasks Int @default(3) @map("max_concurrent_tasks")
+  currentTaskCount   Int @default(0) @map("current_task_count")
+
+  // Weight for load balancing (higher = more tasks)
+  weight Int @default(100)
+
+  // Agent version for compatibility checks
+  version String @default("1.0.0")
+
+  // Metadata (tags, labels, custom properties)
+  metadata Json @default("{}")
+
+  // Timestamps
+  registeredAt DateTime @default(now()) @map("registered_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  capabilities    AgentCapability[]
+  healthChecks    AgentHealthCheck[]
+  taskAssignments TaskAssignment[]
+
+  @@unique([endpoint])
+  @@unique([podName, namespace])
+  @@index([status])
+  @@index([lastHeartbeatAt])
+  @@index([namespace])
+  @@map("agents")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Agent Capability Entity
+// Defines what tools/skills an agent can perform
+// Used by AgentRouterService for capability-based task routing
+// ============================================================================
+
+model AgentCapability {
+  id      String @id @default(cuid())
+  agentId String @map("agent_id")
+
+  // Capability definition
+  name        String // e.g., "desktop_automation", "web_search", "code_execution"
+  toolPattern String @map("tool_pattern") // Glob pattern: "desktop_*", "search_*", "*"
+
+  // Priority (higher = preferred for this capability)
+  priority Int @default(100)
+
+  // Cost multiplier for this capability (for cost-aware routing)
+  costMultiplier Float @default(1.0) @map("cost_multiplier")
+
+  // Whether this capability requires exclusive workspace access
+  requiresExclusiveWorkspace Boolean @default(false) @map("requires_exclusive_workspace")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, name])
+  @@index([agentId])
+  @@index([name])
+  @@index([toolPattern])
+  @@map("agent_capabilities")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Agent Health Check Entity
+// Historical health check records for monitoring and alerting
+// ============================================================================
+
+model AgentHealthCheck {
+  id      String @id @default(cuid())
+  agentId String @map("agent_id")
+
+  // Check result
+  success    Boolean
+  statusCode Int?    @map("status_code")
+  latencyMs  Int     @map("latency_ms")
+  error      String?
+
+  // Endpoint checked
+  endpoint String // Usually "/health/live" or "/health/ready"
+
+  // Timestamp
+  checkedAt DateTime @default(now()) @map("checked_at")
+
+  // Relations
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([agentId, checkedAt])
+  @@index([checkedAt])
+  @@map("agent_health_checks")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Task Assignment Entity
+// Tracks which agent is assigned to execute which node run
+// Implements distributed work tracking for multi-agent coordination
+// ============================================================================
+
+model TaskAssignment {
+  id        String @id @default(cuid())
+  nodeRunId String @map("node_run_id")
+  agentId   String @map("agent_id")
+
+  // Assignment state
+  status String @default("ASSIGNED") // ASSIGNED, RUNNING, COMPLETED, FAILED, REASSIGNED
+
+  // Routing info (why this agent was selected)
+  routingReason String? @map("routing_reason") // e.g., "capability_match", "load_balance", "affinity"
+
+  // Execution tracking
+  dispatchedAt DateTime? @map("dispatched_at")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+
+  // Result caching
+  result Json?
+  error  String?
+
+  // Retry tracking (if reassigned)
+  previousAssignmentId String? @map("previous_assignment_id")
+  attempt              Int     @default(1)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  agent Agent @relation(fields: [agentId], references: [id])
+
+  @@unique([nodeRunId, attempt])
+  @@index([agentId])
+  @@index([nodeRunId])
+  @@index([status])
+  @@index([dispatchedAt])
+  @@map("task_assignments")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Agent Pool Entity (Optional)
+// Groups agents for tenant isolation or workload separation
+// ============================================================================
+
+model AgentPool {
+  id       String @id @default(cuid())
+  name     String @unique
+  tenantId String? @map("tenant_id") // null = shared pool
+
+  // Pool settings
+  minAgents           Int @default(1) @map("min_agents")
+  maxAgents           Int @default(10) @map("max_agents")
+  scaleUpThreshold    Int @default(80) @map("scale_up_threshold")   // % utilization
+  scaleDownThreshold  Int @default(20) @map("scale_down_threshold") // % utilization
+
+  // Agent selector (label selector for K8s)
+  selector Json @default("{}")
+
+  // Status
+  enabled Boolean @default(true)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("agent_pools")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Phase 8: Advanced Analytics Dashboard
+// ============================================================================
+
+// ============================================================================
+// Workflow Execution Metric Entity
+// Captures execution-level metrics for analytics and dashboards
+// ============================================================================
+
+model WorkflowExecutionMetric {
+  id            String @id @default(cuid())
+  workflowRunId String @map("workflow_run_id")
+  tenantId      String @map("tenant_id")
+
+  // Workflow identification
+  workflowName String  @map("workflow_name")
+  templateId   String? @map("template_id")
+
+  // Execution status
+  status String // STARTED, COMPLETED, FAILED, CANCELLED
+
+  // Timing metrics
+  startedAt   DateTime  @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  durationMs  Int?      @map("duration_ms")
+
+  // Execution counts
+  nodeCount          Int @default(0) @map("node_count")
+  completedNodeCount Int @default(0) @map("completed_node_count")
+  failedNodeCount    Int @default(0) @map("failed_node_count")
+  retriedNodeCount   Int @default(0) @map("retried_node_count")
+
+  // Agent metrics (Phase 7 integration)
+  agentId      String? @map("agent_id")
+  agentName    String? @map("agent_name")
+  reassignments Int    @default(0)
+
+  // Error tracking
+  errorType    String? @map("error_type")
+  errorMessage String? @map("error_message")
+
+  // Resource usage (optional - from agent reports)
+  peakMemoryMb  Float? @map("peak_memory_mb")
+  avgCpuPercent Float? @map("avg_cpu_percent")
+
+  // Tags for dimensional analysis
+  tags Json @default("{}")
+
+  // Timestamp for time-series indexing
+  timestamp DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, timestamp])
+  @@index([workflowRunId])
+  @@index([status])
+  @@index([timestamp])
+  @@index([templateId])
+  @@index([agentId])
+  @@map("workflow_execution_metrics")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Workflow Step Metric Entity
+// Captures step-level metrics for detailed performance analysis
+// ============================================================================
+
+model WorkflowStepMetric {
+  id       String @id @default(cuid())
+  nodeId   String @map("node_id")
+  nodeRunId String @map("node_run_id")
+  workflowRunId String @map("workflow_run_id")
+  tenantId String @map("tenant_id")
+
+  // Step identification
+  stepName String @map("step_name")
+  stepType String @map("step_type") // TASK, DECISION, PARALLEL, WAIT
+
+  // Execution status
+  status String // STARTED, COMPLETED, FAILED, SKIPPED
+
+  // Timing metrics
+  startedAt   DateTime  @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  durationMs  Int?      @map("duration_ms")
+  queueTimeMs Int?      @map("queue_time_ms") // Time from READY to RUNNING
+
+  // Attempt tracking
+  attempt    Int @default(1)
+  retryCount Int @default(0) @map("retry_count")
+
+  // Tool metrics
+  toolsUsed     String[] @default([]) @map("tools_used")
+  highRiskTools String[] @default([]) @map("high_risk_tools")
+
+  // Agent that executed this step
+  agentId   String? @map("agent_id")
+  agentName String? @map("agent_name")
+
+  // Resource usage
+  memoryMb   Float? @map("memory_mb")
+  cpuPercent Float? @map("cpu_percent")
+
+  // Error tracking
+  errorType    String? @map("error_type")
+  errorMessage String? @map("error_message")
+
+  // Timestamp for time-series indexing
+  timestamp DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, timestamp])
+  @@index([workflowRunId])
+  @@index([nodeId])
+  @@index([nodeRunId])
+  @@index([stepType])
+  @@index([status])
+  @@index([timestamp])
+  @@index([agentId])
+  @@map("workflow_step_metrics")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Metrics Snapshot Entity
+// Pre-aggregated metrics for efficient dashboard queries
+// Aggregated at 1m, 5m, 1h, 1d intervals
+// ============================================================================
+
+model MetricsSnapshot {
+  id String @id @default(cuid())
+
+  // Dimensions
+  tenantId   String  @map("tenant_id")
+  metricName String  @map("metric_name") // e.g., "workflow_executions", "success_rate", "avg_duration"
+  workflowId String  @default("_all") @map("workflow_id") // "_all" = aggregate across all workflows
+  agentId    String  @default("_all") @map("agent_id")    // "_all" = aggregate across all agents
+
+  // Time bucket
+  period       String   @map("period") // 1m, 5m, 15m, 1h, 1d
+  bucketStart  DateTime @map("bucket_start")
+  bucketEnd    DateTime @map("bucket_end")
+
+  // Aggregate values
+  count       Int   @default(0)
+  sum         Float @default(0)
+  min         Float @default(0)
+  max         Float @default(0)
+  avg         Float @default(0)
+  percentile50 Float @default(0) @map("percentile_50")
+  percentile95 Float @default(0) @map("percentile_95")
+  percentile99 Float @default(0) @map("percentile_99")
+
+  // Status breakdowns (for execution metrics)
+  successCount Int @default(0) @map("success_count")
+  failureCount Int @default(0) @map("failure_count")
+
+  // Additional dimensions as JSON
+  tags Json @default("{}")
+
+  // Timestamp
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([tenantId, metricName, period, bucketStart, workflowId, agentId])
+  @@index([tenantId])
+  @@index([tenantId, metricName])
+  @@index([tenantId, bucketStart])
+  @@index([metricName, period])
+  @@index([bucketStart])
+  @@map("metrics_snapshots")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Dashboard Widget Entity
+// Stores user-configured dashboard widgets
+// ============================================================================
+
+model DashboardWidget {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+  userId   String? @map("user_id") // null = shared dashboard
+
+  // Widget configuration
+  name        String
+  description String?
+  type        String // line_chart, bar_chart, gauge, kpi_card, table, heatmap
+  metrics     String[] // Metrics to display
+  filters     Json @default("{}") // Filter configuration
+  visualization Json @default("{}") // Visualization settings (colors, thresholds, etc.)
+
+  // Layout
+  position Json @default("{}") // { x, y, w, h }
+  order    Int  @default(0)
+
+  // Dashboard grouping
+  dashboardId String? @map("dashboard_id")
+
+  // Status
+  enabled Boolean @default(true)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@index([dashboardId])
+  @@map("dashboard_widgets")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Alert Rule Entity
+// Configurable alerts based on metric thresholds
+// ============================================================================
+
+model AlertRule {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Rule configuration
+  name        String
+  description String?
+  metricName  String @map("metric_name")
+  condition   String // gt, gte, lt, lte, eq
+  threshold   Float
+
+  // Evaluation settings
+  evaluationPeriod String @default("5m") @map("evaluation_period") // Time window to evaluate
+  aggregation      String @default("avg") // sum, avg, min, max, count
+
+  // Filters
+  workflowId String? @map("workflow_id")
+  agentId    String? @map("agent_id")
+  filters    Json    @default("{}")
+
+  // Notification settings
+  severity         String @default("warning") // info, warning, error, critical
+  notificationUrls String[] @default([]) @map("notification_urls")
+
+  // Rate limiting
+  cooldownMinutes Int @default(15) @map("cooldown_minutes")
+
+  // Status
+  enabled       Boolean   @default(true)
+  lastTriggered DateTime? @map("last_triggered")
+  lastChecked   DateTime? @map("last_checked")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  alerts AlertHistory[]
+
+  @@index([tenantId])
+  @@index([tenantId, metricName])
+  @@index([enabled])
+  @@map("alert_rules")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Alert History Entity
+// Records triggered alerts for audit trail
+// ============================================================================
+
+model AlertHistory {
+  id      String @id @default(cuid())
+  ruleId  String @map("rule_id")
+
+  // Alert details
+  metricValue Float  @map("metric_value")
+  threshold   Float
+  message     String
+
+  // Resolution
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime? @map("resolved_at")
+  resolvedBy String?   @map("resolved_by")
+
+  // Notification status
+  notified       Boolean @default(false)
+  notificationError String? @map("notification_error")
+
+  // Timestamp
+  triggeredAt DateTime @default(now()) @map("triggered_at")
+
+  // Relations
+  rule AlertRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId])
+  @@index([triggeredAt])
+  @@index([resolved])
+  @@map("alert_history")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Phase 9: Self-Healing & Auto-Recovery
+// ============================================================================
+
+// ============================================================================
+// Workflow Checkpoint Entity
+// Stores durable execution state for crash recovery
+// Implements the DBOS durable execution pattern
+// ============================================================================
+
+model WorkflowCheckpoint {
+  id            String @id @default(cuid())
+  workflowRunId String @map("workflow_run_id")
+  tenantId      String @map("tenant_id")
+
+  // Checkpoint identification
+  checkpointKey String @map("checkpoint_key") // e.g., "node:node_id:attempt:1"
+  version       Int    @default(1)            // For optimistic locking
+
+  // Checkpoint data
+  state         Json   // Serialized workflow/node state
+  metadata      Json   @default("{}")
+
+  // Recovery info
+  recoverable   Boolean @default(true)
+  recoveryHint  String? @map("recovery_hint") // Instructions for recovery
+
+  // Timestamps
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  expiresAt     DateTime @map("expires_at") // For cleanup
+
+  @@unique([workflowRunId, checkpointKey])
+  @@index([workflowRunId])
+  @@index([tenantId])
+  @@index([expiresAt])
+  @@map("workflow_checkpoints")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Dead Letter Entry Entity
+// Captures permanently failed tasks for manual intervention
+// ============================================================================
+
+model DeadLetterEntry {
+  id            String @id @default(cuid())
+  tenantId      String @map("tenant_id")
+  workflowRunId String @map("workflow_run_id")
+  nodeRunId     String @map("node_run_id")
+
+  // Original task info
+  taskType      String  @map("task_type") // WORKFLOW_NODE, AGENT_TASK, etc.
+  originalPayload Json  @map("original_payload")
+
+  // Failure info
+  failureReason   String  @map("failure_reason")
+  failureCount    Int     @default(1) @map("failure_count")
+  lastFailedAt    DateTime @map("last_failed_at")
+  errorDetails    Json?   @map("error_details") // Stack traces, etc.
+
+  // Classification
+  failureCategory String  @map("failure_category") // RETRYABLE, PERMANENT, UNKNOWN
+  severity        String  @default("high") // low, medium, high, critical
+
+  // Resolution
+  status          String  @default("PENDING") // PENDING, RETRYING, RESOLVED, DISCARDED
+  resolvedAt      DateTime? @map("resolved_at")
+  resolvedBy      String?   @map("resolved_by")
+  resolutionNote  String?   @map("resolution_note")
+
+  // Retry tracking
+  maxRetries      Int     @default(3) @map("max_retries")
+  retryCount      Int     @default(0) @map("retry_count")
+  nextRetryAt     DateTime? @map("next_retry_at")
+
+  // Timestamps
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([workflowRunId])
+  @@index([nodeRunId])
+  @@index([status])
+  @@index([severity])
+  @@index([failureCategory])
+  @@index([nextRetryAt])
+  @@map("dead_letter_entries")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Circuit Breaker State Entity
+// Persistent circuit breaker state per external service
+// ============================================================================
+
+model CircuitBreakerState {
+  id          String @id @default(cuid())
+  serviceName String @unique @map("service_name") // e.g., "task-controller", "agent-pool-1"
+
+  // Circuit state
+  state         String   @default("CLOSED") // CLOSED, OPEN, HALF_OPEN
+  failureCount  Int      @default(0) @map("failure_count")
+  successCount  Int      @default(0) @map("success_count")
+
+  // Thresholds (configurable per service)
+  failureThreshold    Int @default(5) @map("failure_threshold")
+  successThreshold    Int @default(3) @map("success_threshold")  // For half-open -> closed
+  resetTimeoutMs      Int @default(30000) @map("reset_timeout_ms") // Time to try half-open
+
+  // Timing
+  lastFailureAt       DateTime? @map("last_failure_at")
+  lastSuccessAt       DateTime? @map("last_success_at")
+  openedAt            DateTime? @map("opened_at")
+  halfOpenAt          DateTime? @map("half_open_at")
+
+  // Statistics
+  totalRequests       Int @default(0) @map("total_requests")
+  totalFailures       Int @default(0) @map("total_failures")
+  totalSuccesses      Int @default(0) @map("total_successes")
+  totalTimeouts       Int @default(0) @map("total_timeouts")
+
+  // Metadata
+  metadata            Json @default("{}")
+
+  // Timestamps
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@index([state])
+  @@map("circuit_breaker_states")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Recovery Log Entity
+// Audit trail of all recovery actions
+// ============================================================================
+
+model RecoveryLog {
+  id            String @id @default(cuid())
+  tenantId      String? @map("tenant_id")
+
+  // Recovery action
+  actionType    String @map("action_type") // TASK_REASSIGNED, WORKFLOW_RESUMED, CIRCUIT_OPENED, DLQ_RETRY, etc.
+  targetType    String @map("target_type") // WORKFLOW, NODE, AGENT, CIRCUIT_BREAKER
+  targetId      String @map("target_id")
+
+  // Context
+  previousState String? @map("previous_state")
+  newState      String? @map("new_state")
+  reason        String
+  details       Json    @default("{}")
+
+  // Actor (who/what triggered recovery)
+  actorType     String  @map("actor_type") // SYSTEM, USER, SCHEDULER
+  actorId       String? @map("actor_id")
+
+  // Result
+  success       Boolean
+  errorMessage  String? @map("error_message")
+
+  // Timestamp
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([actionType])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("recovery_logs")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Stale Task Entity
+// Tracks tasks that have been detected as stale for recovery
+// ============================================================================
+
+model StaleTask {
+  id            String @id @default(cuid())
+  nodeRunId     String @unique @map("node_run_id")
+  workflowRunId String @map("workflow_run_id")
+  tenantId      String @map("tenant_id")
+
+  // Detection info
+  detectedAt    DateTime @default(now()) @map("detected_at")
+  staleReason   String   @map("stale_reason") // TIMEOUT, AGENT_OFFLINE, HEARTBEAT_MISSING
+
+  // Original assignment
+  originalAgentId String? @map("original_agent_id")
+  assignedAt      DateTime? @map("assigned_at")
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+
+  // Recovery status
+  status          String @default("DETECTED") // DETECTED, RECOVERING, RECOVERED, FAILED
+  recoveryAttempts Int   @default(0) @map("recovery_attempts")
+  newAgentId      String? @map("new_agent_id")
+  recoveredAt     DateTime? @map("recovered_at")
+
+  // Error tracking
+  errorMessage    String? @map("error_message")
+
+  // Timestamps
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([workflowRunId])
+  @@index([status])
+  @@index([detectedAt])
+  @@map("stale_tasks")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Manus-Style Goal-First Orchestration
+// Phase 10: Transform to goal-first, agent-owned orchestration model
+// ============================================================================
+
+// ============================================================================
+// Goal Run Phase Enum
+// Represents the current phase of the orchestrator loop
+// ============================================================================
+
+enum GoalRunPhase {
+  INITIALIZING
+  PLANNING
+  EXECUTING
+  CONTROLLING_DESKTOP
+  WAITING_USER_INPUT
+  WAITING_APPROVAL
+  VERIFYING
+  REPLANNING
+  COMPLETED
+  FAILED
+  PAUSED
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Goal Run Status Enum
+// High-level status of a goal run
+// ============================================================================
+
+enum GoalRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Goal Run Execution Engine Enum
+// Immutable per-run execution engine selection
+// ============================================================================
+
+enum GoalRunExecutionEngine {
+  LEGACY_DB_LOOP
+  TEMPORAL_WORKFLOW
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Checklist Item Status Enum
+// Status of individual plan steps
+// ============================================================================
+
+enum ChecklistItemStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  FAILED
+  BLOCKED
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Step Type Enum
+// Classifies whether a checklist item is executable or requires user input
+// ============================================================================
+
+enum StepType {
+  EXECUTE
+  USER_INPUT_REQUIRED
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Execution Surface Enum
+// Explicitly declares the execution surface to enforce text-only vs desktop
+// ============================================================================
+
+enum ExecutionSurface {
+  TEXT_ONLY
+  DESKTOP
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// User Prompt Status Enum
+// Tracks durable prompt lifecycle for WAITING_USER_INPUT runs
+// ============================================================================
+
+enum UserPromptStatus {
+  OPEN
+  RESOLVED
+  CANCELLED
+  EXPIRED
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// User Prompt Kind Enum
+// Distinguishes clarification prompts from desktop takeover prompts
+// ============================================================================
+
+enum UserPromptKind {
+  TEXT_CLARIFICATION
+  DESKTOP_TAKEOVER
+  GOAL_INTAKE
+  APPROVAL
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// User Prompt Scope Enum
+// Explicitly defines what the prompt is scoped to (no null-based inference)
+// ============================================================================
+
+enum UserPromptScope {
+  RUN
+  STEP
+  APPROVAL
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// User Prompt Cancel Reason Enum
+// Captures why an OPEN prompt was cancelled
+// ============================================================================
+
+enum UserPromptCancelReason {
+  SUPERSEDED
+  USER_CANCELLED
+  TIMEOUT
+  POLICY_DENY
+  RUN_ENDED
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Actor Type Enum
+// Captures who resolved a prompt (required)
+// ============================================================================
+
+enum ActorType {
+  HUMAN
+  AGENT
+  SYSTEM
+  PARENT_AGENT
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// GoalSpec Status Enum
+// Used for goal intake gating prior to planning
+// ============================================================================
+
+enum GoalSpecStatus {
+  INCOMPLETE
+  COMPLETE
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Desktop Lease Enums
+// Orchestrator-owned lease for desktop retention while awaiting input
+// ============================================================================
+
+enum DesktopLeaseMode {
+  EPHEMERAL
+  WORKSPACE
+
+  @@schema("workflow_orchestrator")
+}
+
+enum DesktopLeaseStatus {
+  ACTIVE
+  RELEASED
+  EXPIRED
+  CANCELLED
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Steering Message Type Enum
+// Types of user intervention commands
+// ============================================================================
+
+enum SteeringMessageType {
+  PAUSE
+  RESUME
+  CANCEL
+  MODIFY_PLAN
+  APPROVE
+  REJECT
+  INSTRUCTION
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Goal Run Entity
+// Represents a goal-first execution instance
+// User states a goal, system plans and executes autonomously
+// ============================================================================
+
+model GoalRun {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Goal definition
+  goal        String // Natural language goal statement
+  constraints Json   @default("{}") // { workspaceMode, allowedTools, riskPolicy, deadlineMinutes }
+
+  // Orchestrator state
+  phase           GoalRunPhase           @default(INITIALIZING)
+  status          GoalRunStatus          @default(PENDING)
+  executionEngine GoalRunExecutionEngine @default(LEGACY_DB_LOOP) @map("execution_engine")
+
+  // Link to execution (GoalRun creates a WorkflowRun for execution)
+  workflowRunId String?      @unique @map("workflow_run_id")
+  workflowRun   WorkflowRun? @relation(fields: [workflowRunId], references: [id])
+
+  // Temporal engine audit fields (nullable for LEGACY_DB_LOOP runs)
+  temporalWorkflowId String?   @map("temporal_workflow_id")
+  temporalRunId      String?   @map("temporal_run_id")
+  temporalStartedAt  DateTime? @map("temporal_started_at")
+
+  // Current plan tracking
+  currentPlanVersion Int @default(0) @map("current_plan_version")
+
+  // Error tracking
+  error String?
+
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  planVersions     PlanVersion[]
+  steeringMessages SteeringMessage[]
+  activityEvents   ActivityEvent[]
+  userPrompts      UserPrompt[]
+  goalSpec         GoalSpec?
+  desktopLeases    DesktopLease[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([phase])
+  @@index([createdAt])
+  @@map("goal_runs")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Goal Spec Entity
+// Typed goal intake surface (gate before planning)
+// ============================================================================
+
+model GoalSpec {
+  id        String @id @default(cuid())
+  goalRunId String @unique @map("goal_run_id")
+  tenantId  String @map("tenant_id")
+
+  status GoalSpecStatus @default(INCOMPLETE)
+
+  schemaId      String @map("schema_id")
+  schemaVersion Int    @default(1) @map("schema_version")
+  jsonSchema    Json   @map("json_schema")
+  uiSchema      Json?  @map("ui_schema")
+  values        Json   @default("{}")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  goalRun     GoalRun     @relation(fields: [goalRunId], references: [id], onDelete: Cascade)
+  userPrompts UserPrompt[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("goal_specs")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Desktop Lease Entity
+// First-class, orchestrator-owned retention lease for desktops/workspaces
+// ============================================================================
+
+model DesktopLease {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+  goalRunId String @map("goal_run_id")
+
+  // Optional external identifiers
+  workspaceId String? @map("workspace_id")
+  taskId      String? @map("task_id")
+
+  mode   DesktopLeaseMode   @default(WORKSPACE)
+  status DesktopLeaseStatus @default(ACTIVE)
+
+  // Retention controls
+  keepaliveUntil DateTime? @map("keepalive_until")
+  expiresAt      DateTime? @map("expires_at")
+  releasedAt     DateTime? @map("released_at")
+
+  // Why we’re holding it (e.g., DESKTOP_TAKEOVER)
+  reason String? @map("reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  goalRun     GoalRun     @relation(fields: [goalRunId], references: [id], onDelete: Cascade)
+  userPrompts UserPrompt[]
+
+  @@index([tenantId])
+  @@index([goalRunId])
+  @@index([status])
+  @@index([keepaliveUntil])
+  @@map("desktop_leases")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Plan Version Entity
+// Represents a version of the plan (checklist) for a goal run
+// New version created on each replan
+// ============================================================================
+
+model PlanVersion {
+  id        String @id @default(cuid())
+  goalRunId String @map("goal_run_id")
+
+  // Version tracking
+  version Int // 1, 2, 3, etc.
+
+  // Plan metadata
+  summary           String? // Brief description of this plan version
+  previousVersionId String? @map("previous_version_id")
+  replanReason      String? @map("replan_reason") // Why was a replan needed?
+
+  // LLM generation metadata
+  llmModel     String? @map("llm_model")     // Model used for planning
+  llmTokens    Int?    @map("llm_tokens")    // Tokens used
+  confidence   Float?  @map("confidence")    // Planning confidence score (0-1)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  goalRun        GoalRun         @relation(fields: [goalRunId], references: [id], onDelete: Cascade)
+  checklistItems ChecklistItem[]
+
+  @@unique([goalRunId, version])
+  @@index([goalRunId])
+  @@index([goalRunId, version])
+  @@map("plan_versions")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Checklist Item Entity
+// Individual step in a plan version
+// Maps to the "todo.md" / checklist concept from Manus
+// ============================================================================
+
+model ChecklistItem {
+  id            String @id @default(cuid())
+  planVersionId String @map("plan_version_id")
+
+  // Item definition
+  order       Int    // Execution order (1, 2, 3, etc.)
+  description String // What needs to be done
+  type        StepType @default(EXECUTE) @map("step_type")
+
+  // Status
+  status ChecklistItemStatus @default(PENDING)
+
+  // Durable blocked metadata (P0: restart-safe NEEDS_HELP / INPUT_REQUIRED handling)
+  blockedByPromptId String?   @map("blocked_by_prompt_id")
+  blockedReason     String?   @map("blocked_reason")
+  blockedAt         DateTime? @map("blocked_at")
+
+  // Link to execution (item may create a WorkflowNode for execution)
+  workflowNodeId String? @map("workflow_node_id")
+
+  // Verification criteria
+  expectedOutcome String? @map("expected_outcome") // What should happen if successful
+  actualOutcome   String? @map("actual_outcome")   // What actually happened
+
+  // Dependencies (item IDs that must complete first)
+  dependencies String[] @default([])
+
+  // Tool configuration
+  suggestedTools String[] @default([]) @map("suggested_tools")
+  requiresDesktop Boolean @default(false) @map("requires_desktop")
+  executionSurface ExecutionSurface @default(TEXT_ONLY) @map("execution_surface")
+
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  planVersion         PlanVersion          @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
+  verificationResults VerificationResult[]
+  userPrompts         UserPrompt[]
+
+  @@index([planVersionId])
+  @@index([planVersionId, order])
+  @@index([status])
+  @@map("checklist_items")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// User Prompt Entity
+// Durable user-interaction surface for USER_INPUT_REQUIRED steps
+// ============================================================================
+
+model UserPrompt {
+  id             String @id @default(cuid())
+  tenantId        String @map("tenant_id")
+  goalRunId       String @map("goal_run_id")
+  checklistItemId String? @map("checklist_item_id")
+  goalSpecId      String? @map("goal_spec_id")
+  approvalRequestId String? @map("approval_request_id")
+  desktopLeaseId  String? @map("desktop_lease_id")
+
+  // Prompt classification
+  kind   UserPromptKind
+  scope  UserPromptScope @default(RUN)
+  status UserPromptStatus @default(OPEN)
+
+  // Idempotency
+  // Recommended format: prompt:${runId}:${stepId}:${kind}
+  dedupeKey String @unique @map("dedupe_key")
+
+  // Content
+  schemaId         String? @map("schema_id")
+  schemaVersion    Int?    @map("schema_version")
+  jsonSchema       Json?   @map("json_schema")
+  uiSchema         Json?   @map("ui_schema")
+  validatorVersion String? @map("validator_version")
+
+  payload Json @default("{}")
+  // Deprecated (kept for compatibility): prefer UserPromptResolution.answers
+  answers Json?
+
+  // Revisioning / supersede semantics (no history overwrites)
+  rootPromptId        String? @map("root_prompt_id")
+  supersedesPromptId  String? @map("supersedes_prompt_id")
+  supersededByPromptId String? @map("superseded_by_prompt_id")
+  revision            Int     @default(1)
+
+  // Cancellation / expiry
+  cancelReason UserPromptCancelReason? @map("cancel_reason")
+  cancelledAt  DateTime?               @map("cancelled_at")
+  expiresAt    DateTime?               @map("expires_at")
+
+  // Timestamps
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  // Relations
+  goalRun       GoalRun       @relation(fields: [goalRunId], references: [id], onDelete: Cascade)
+  checklistItem ChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+  goalSpec      GoalSpec?      @relation(fields: [goalSpecId], references: [id], onDelete: Cascade)
+  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  desktopLease  DesktopLease?  @relation(fields: [desktopLeaseId], references: [id], onDelete: Cascade)
+  resolutions   UserPromptResolution[]
+
+  @@index([tenantId])
+  @@index([goalRunId])
+  @@index([checklistItemId])
+  @@index([goalSpecId])
+  @@index([approvalRequestId])
+  @@index([desktopLeaseId])
+  @@index([scope])
+  @@index([status])
+  @@map("user_prompts")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// User Prompt Resolution Entity
+// Immutable resolution record with actor identity + auth context
+// ============================================================================
+
+model UserPromptResolution {
+  id       String @id @default(cuid())
+  promptId String @unique @map("prompt_id")
+
+  tenantId  String @map("tenant_id")
+  goalRunId String @map("goal_run_id")
+
+  actorType      ActorType @map("actor_type")
+  actorId        String?   @map("actor_id")
+  actorEmail     String?   @map("actor_email")
+  actorName      String?   @map("actor_name")
+  actorIpAddress String?   @map("actor_ip_address")
+  actorUserAgent String?   @map("actor_user_agent")
+
+  requestId   String? @map("request_id")
+  authContext Json?   @map("auth_context")
+  clientRequestId String? @map("client_request_id")
+  idempotencyKey   String? @map("idempotency_key")
+
+  // Audit-grade authorization decision snapshot (ALLOW by default; denies do not create a resolution row)
+  authzDecision String @default("ALLOW") @map("authz_decision")
+  authzPolicy   String? @map("authz_policy")
+  authzRuleId   String? @map("authz_rule_id")
+  authzReason   String? @map("authz_reason")
+
+  answers Json @default("{}")
+
+  // Resume acknowledgement (set by outbox resumer after successful Temporal Update)
+  resumeAcknowledgedAt DateTime? @map("resume_acknowledged_at")
+  resumeAck            Json?     @map("resume_ack")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  prompt UserPrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([goalRunId])
+  @@index([actorId])
+  @@index([clientRequestId])
+  @@index([idempotencyKey])
+  @@index([resumeAcknowledgedAt])
+  @@index([createdAt])
+  @@map("user_prompt_resolutions")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Steering Message Entity
+// User intervention commands during goal execution
+// Enables human-in-the-loop control
+// ============================================================================
+
+model SteeringMessage {
+  id        String @id @default(cuid())
+  goalRunId String @map("goal_run_id")
+
+  // Message content
+  type    SteeringMessageType
+  content String? // Additional instructions or reason
+
+  // Target (for MODIFY_PLAN, APPROVE, REJECT)
+  targetItemId String? @map("target_item_id")
+
+  // Processing state
+  acknowledged   Boolean   @default(false)
+  acknowledgedAt DateTime? @map("acknowledged_at")
+  processedAt    DateTime? @map("processed_at")
+
+  // Actor info
+  userId    String? @map("user_id")
+  userEmail String? @map("user_email")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  goalRun GoalRun @relation(fields: [goalRunId], references: [id], onDelete: Cascade)
+
+  @@index([goalRunId])
+  @@index([goalRunId, acknowledged])
+  @@index([type])
+  @@index([createdAt])
+  @@map("steering_messages")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Verification Result Entity
+// Records outcome verification for checklist items
+// Enables intelligent replanning based on actual results
+// ============================================================================
+
+model VerificationResult {
+  id              String @id @default(cuid())
+  checklistItemId String @map("checklist_item_id")
+
+  // Verification outcome
+  passed     Boolean
+  confidence Float?  // Verification confidence (0-1)
+
+  // Evidence
+  evidence      Json?   // Screenshots, tool outputs, etc.
+  failureReason String? @map("failure_reason")
+
+  // LLM verification metadata
+  llmModel  String? @map("llm_model")
+  llmTokens Int?    @map("llm_tokens")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  checklistItem ChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  @@index([checklistItemId])
+  @@index([passed])
+  @@index([createdAt])
+  @@map("verification_results")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Activity Event Entity
+// Event stream for the activity feed
+// Provides narrated autonomy - visibility into agent operations
+// ============================================================================
+
+model ActivityEvent {
+  id        String @id @default(cuid())
+  goalRunId String @map("goal_run_id")
+
+  // Event classification
+  eventType String @map("event_type") // GOAL_CREATED, PLANNING_STARTED, STEP_COMPLETED, etc.
+  severity  String @default("info")   // info, warning, error
+
+  // Event content
+  title       String
+  description String?
+  details     Json?   // Additional structured data
+
+  // Related entities
+  planVersionId   String? @map("plan_version_id")
+  checklistItemId String? @map("checklist_item_id")
+  workflowNodeId  String? @map("workflow_node_id")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  goalRun GoalRun @relation(fields: [goalRunId], references: [id], onDelete: Cascade)
+
+  @@index([goalRunId])
+  @@index([goalRunId, createdAt])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("activity_events")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Phase 7: Enhanced Features
+// Goal Templates, Batch Execution, Analytics Insights
+// ============================================================================
+
+// ============================================================================
+// Goal Template Entity
+// Reusable templates for common goal patterns
+// ============================================================================
+
+model GoalTemplate {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Template identification
+  name        String
+  description String?
+  category    String?  // e.g., "data-processing", "web-automation", "reporting"
+  tags        String[] @default([])
+  icon        String?  // Icon identifier for UI display
+
+  // Template content
+  goalPattern    String  @map("goal_pattern")    // Template with {{variables}}
+  defaultConstraints Json @default("{}") @map("default_constraints")
+
+  // Variable definitions
+  variables Json @default("[]") // Array of { name, type, required, default, description }
+
+  // Checklist template (pre-defined plan steps)
+  checklistTemplate Json @default("[]") @map("checklist_template") // Array of step templates
+
+  // Version control
+  version      String  @default("1.0.0")
+  isLatest     Boolean @default(true) @map("is_latest")
+  previousVersionId String? @map("previous_version_id")
+
+  // Publishing status
+  isPublished Boolean @default(false) @map("is_published")
+  isBuiltIn   Boolean @default(false) @map("is_built_in") // System-provided templates
+
+  // Usage tracking
+  usageCount Int @default(0) @map("usage_count")
+  lastUsedAt DateTime? @map("last_used_at")
+
+  // Audit
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  goalRuns GoalRunFromTemplate[]
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId])
+  @@index([tenantId, isPublished])
+  @@index([category])
+  @@index([isBuiltIn])
+  @@index([usageCount])
+  @@map("goal_templates")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Goal Run From Template Junction
+// Tracks which goal runs were created from templates
+// ============================================================================
+
+model GoalRunFromTemplate {
+  id         String @id @default(cuid())
+  goalRunId  String @unique @map("goal_run_id")
+  templateId String @map("template_id")
+
+  // Variables used when instantiating
+  variableValues Json @default("{}") @map("variable_values")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  template GoalTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([templateId])
+  @@index([goalRunId])
+  @@map("goal_runs_from_template")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Goal Run Batch Entity
+// Groups multiple goal runs for batch execution
+// ============================================================================
+
+model GoalRunBatch {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Batch identification
+  name        String
+  description String?
+
+  // Batch configuration
+  executionMode String @default("PARALLEL") @map("execution_mode") // PARALLEL, SEQUENTIAL
+  maxConcurrency Int @default(5) @map("max_concurrency")          // Max parallel executions
+  stopOnFailure  Boolean @default(false) @map("stop_on_failure")   // Stop batch on first failure
+
+  // Batch status
+  status String @default("PENDING") // PENDING, RUNNING, COMPLETED, PARTIALLY_COMPLETED, FAILED, CANCELLED
+
+  // Progress tracking
+  totalGoals     Int @default(0) @map("total_goals")
+  completedGoals Int @default(0) @map("completed_goals")
+  failedGoals    Int @default(0) @map("failed_goals")
+  cancelledGoals Int @default(0) @map("cancelled_goals")
+
+  // Error tracking
+  error String?
+
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  items GoalRunBatchItem[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@map("goal_run_batches")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Goal Run Batch Item Entity
+// Individual goal run within a batch
+// ============================================================================
+
+model GoalRunBatchItem {
+  id      String @id @default(cuid())
+  batchId String @map("batch_id")
+
+  // Goal definition
+  goal        String
+  constraints Json   @default("{}")
+
+  // Template reference (optional)
+  templateId     String? @map("template_id")
+  variableValues Json    @default("{}") @map("variable_values")
+
+  // Execution order (for SEQUENTIAL mode)
+  order Int @default(0)
+
+  // Status tracking
+  status    String  @default("PENDING") // PENDING, QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED, SKIPPED
+  goalRunId String? @map("goal_run_id") // Linked after goal run is created
+
+  // Error tracking
+  error String?
+
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  batch GoalRunBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([batchId, order])
+  @@index([batchId, status])
+  @@index([goalRunId])
+  @@map("goal_run_batch_items")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Goal Run Analytics Snapshot
+// Pre-aggregated goal run metrics for analytics dashboard
+// ============================================================================
+
+model GoalRunAnalyticsSnapshot {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Time bucket
+  period      String   @map("period") // 1h, 1d, 7d, 30d
+  bucketStart DateTime @map("bucket_start")
+  bucketEnd   DateTime @map("bucket_end")
+
+  // Goal Run Metrics
+  totalGoalRuns     Int @default(0) @map("total_goal_runs")
+  completedGoalRuns Int @default(0) @map("completed_goal_runs")
+  failedGoalRuns    Int @default(0) @map("failed_goal_runs")
+  cancelledGoalRuns Int @default(0) @map("cancelled_goal_runs")
+
+  // Duration metrics (in milliseconds)
+  avgDurationMs Float @default(0) @map("avg_duration_ms")
+  minDurationMs Float @default(0) @map("min_duration_ms")
+  maxDurationMs Float @default(0) @map("max_duration_ms")
+  p50DurationMs Float @default(0) @map("p50_duration_ms")
+  p95DurationMs Float @default(0) @map("p95_duration_ms")
+  p99DurationMs Float @default(0) @map("p99_duration_ms")
+
+  // Step metrics
+  avgStepsPerGoal  Float @default(0) @map("avg_steps_per_goal")
+  avgReplanCount   Float @default(0) @map("avg_replan_count")
+  totalStepsExecuted Int @default(0) @map("total_steps_executed")
+
+  // Template usage
+  templateUsageCount Int @default(0) @map("template_usage_count")
+  topTemplateId      String? @map("top_template_id")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([tenantId, period, bucketStart])
+  @@index([tenantId])
+  @@index([tenantId, period])
+  @@index([bucketStart])
+  @@map("goal_run_analytics_snapshots")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Phase 8: External Integrations - Notification Channels
+// Unified notification system for Slack, Teams, and other channels
+// ============================================================================
+
+model NotificationChannel {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Channel type: SLACK, TEAMS, EMAIL, CUSTOM_WEBHOOK
+  type String
+
+  // Human-readable name
+  name        String
+  description String?
+
+  // Configuration (JSON) - varies by channel type
+  // Slack: { webhookUrl, channel?, username?, iconEmoji? }
+  // Teams: { webhookUrl }
+  // Email: { smtpConfig, fromAddress }
+  config Json @default("{}")
+
+  // Event subscriptions (array of event types)
+  // goal.started, goal.completed, goal.failed, batch.started, batch.completed,
+  // approval.requested, approval.approved, approval.rejected
+  events String[] @default([])
+
+  // Filters for event targeting (JSON)
+  // { categories: [], templateIds: [], minRiskLevel: 'HIGH' }
+  filters Json @default("{}")
+
+  // Status
+  enabled Boolean @default(true)
+  verified Boolean @default(false) @map("verified") // Verified via test message
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  deliveries NotificationDelivery[]
+
+  @@index([tenantId])
+  @@index([tenantId, enabled])
+  @@index([tenantId, type])
+  @@map("notification_channels")
+  @@schema("workflow_orchestrator")
+}
+
+model NotificationDelivery {
+  id        String @id @default(cuid())
+  channelId String @map("channel_id")
+  eventId   String @map("event_id") // Unique event ID for idempotency
+  eventType String @map("event_type")
+
+  // Delivery result
+  success    Boolean
+  statusCode Int?    @map("status_code")
+  error      String?
+  attempts   Int     @default(1)
+
+  // Payload sent (for debugging)
+  payload Json? @default("{}")
+
+  // Timestamps
+  deliveredAt DateTime? @map("delivered_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  channel NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId])
+  @@index([eventId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("notification_deliveries")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Phase 8: External Integrations - Git Integration
+// GitHub/GitLab repository connections for triggering workflows
+// ============================================================================
+
+model GitIntegration {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Provider: GITHUB, GITLAB
+  provider String
+
+  // Human-readable name
+  name        String
+  description String?
+
+  // Repository info
+  owner      String // GitHub org/user or GitLab namespace
+  repository String // Repository name
+  branch     String? @default("main") // Default branch for triggers
+
+  // Authentication (encrypted)
+  // GitHub: { appId, installationId, privateKey } or { personalAccessToken }
+  // GitLab: { accessToken, projectId }
+  credentials Json @default("{}")
+
+  // Webhook configuration
+  webhookId     String? @map("webhook_id") // External webhook ID from Git provider
+  webhookSecret String? @map("webhook_secret") // For verifying incoming webhooks
+
+  // Event subscriptions from Git provider
+  // push, pull_request, issues, release, etc.
+  subscribedEvents String[] @default([]) @map("subscribed_events")
+
+  // Trigger configuration
+  // Which ByteBot events should update Git (status checks, comments)
+  triggerConfig Json @default("{}") @map("trigger_config")
+
+  // Status
+  enabled Boolean @default(true)
+  lastSyncAt DateTime? @map("last_sync_at")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  events GitIntegrationEvent[]
+
+  @@unique([tenantId, provider, owner, repository])
+  @@index([tenantId])
+  @@index([tenantId, provider])
+  @@index([webhookId])
+  @@map("git_integrations")
+  @@schema("workflow_orchestrator")
+}
+
+model GitIntegrationEvent {
+  id            String @id @default(cuid())
+  integrationId String @map("integration_id")
+
+  // Event from Git provider
+  eventType   String @map("event_type") // push, pull_request, etc.
+  eventAction String? @map("event_action") // opened, closed, merged, etc.
+
+  // Reference info
+  ref       String? // refs/heads/main, refs/tags/v1.0.0
+  commitSha String? @map("commit_sha")
+  prNumber  Int?    @map("pr_number")
+  issueNumber Int?  @map("issue_number")
+
+  // Payload (full event data from Git provider)
+  payload Json @default("{}")
+
+  // Processing status
+  processed Boolean @default(false)
+  goalRunId String? @map("goal_run_id") // If triggered a goal run
+
+  // Error info
+  error String?
+
+  // Timestamps
+  receivedAt DateTime @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
+
+  // Relations
+  integration GitIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId])
+  @@index([eventType])
+  @@index([commitSha])
+  @@index([processed])
+  @@index([receivedAt])
+  @@map("git_integration_events")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Phase 9: Advanced AI Features
+// Goal Refinement, Template Generation, Failure Analysis
+// ============================================================================
+
+// ============================================================================
+// Goal Refinement Suggestion Entity
+// Stores AI-generated goal refinement suggestions
+// ============================================================================
+
+model GoalRefinementSuggestion {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Original goal
+  originalGoal String @map("original_goal")
+
+  // Analysis results
+  analysisScore    Float   @map("analysis_score")    // Overall quality score (0-1)
+  suggestionsCount Int     @map("suggestions_count") // Number of suggestions generated
+  topSuggestion    String  @map("top_suggestion")    // Best refined goal suggestion
+  complexity       String  // simple, moderate, complex, very_complex
+
+  // Issues identified
+  issues String[] @default([])
+
+  // Processing info
+  tokensUsed Int?    @map("tokens_used")
+  llmModel   String? @map("llm_model")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([analysisScore])
+  @@index([createdAt])
+  @@map("goal_refinement_suggestions")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Failure Analysis Result Entity
+// Stores AI-generated failure analysis for goal runs
+// ============================================================================
+
+model FailureAnalysisResult {
+  id        String @id @default(cuid())
+  goalRunId String @map("goal_run_id")
+
+  // Primary classification
+  primaryCategory String @map("primary_category") // configuration, network, etc.
+  severity        String // critical, high, medium, low
+
+  // Analysis results (JSON arrays)
+  rootCauses   Json @map("root_causes")   // Array of root cause objects
+  remediations Json @map("remediations")  // Array of remediation objects
+
+  // Confidence score
+  analysisConfidence Float @map("analysis_confidence")
+
+  // Processing info
+  tokensUsed Int?    @map("tokens_used")
+  llmModel   String? @map("llm_model")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([goalRunId])
+  @@index([goalRunId])
+  @@index([primaryCategory])
+  @@index([severity])
+  @@index([createdAt])
+  @@map("failure_analysis_results")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Phase 10: Enterprise Features
+// Multi-Tenant Administration, Compliance, SSO, Custom LLM Providers
+// ============================================================================
+
+// ============================================================================
+// Tenant Entity
+// Core tenant/organization management
+// ============================================================================
+
+model Tenant {
+  id   String @id @default(cuid())
+  name String
+  slug String @unique // URL-friendly identifier
+
+  // Contact information
+  adminEmail  String  @map("admin_email")
+  adminName   String? @map("admin_name")
+  companyName String? @map("company_name")
+
+  // Subscription/billing
+  plan            String  @default("free") // free, starter, professional, enterprise
+  billingEmail    String? @map("billing_email")
+  stripeCustomerId String? @map("stripe_customer_id")
+
+  // Status
+  status    String   @default("active") // active, suspended, pending, cancelled
+  trialEnds DateTime? @map("trial_ends")
+
+  // Metadata
+  metadata Json @default("{}")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  settings       TenantSettings?
+  quotas         TenantQuota?
+  ssoConfig      SSOConfiguration?
+  llmProviders   LLMProviderConfig[]
+  complianceReports ComplianceReport[]
+  dataProcessingRecords DataProcessingRecord[]
+
+  @@index([slug])
+  @@index([status])
+  @@index([plan])
+  @@index([createdAt])
+  @@map("tenants")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Tenant Settings Entity
+// Configurable settings per tenant
+// ============================================================================
+
+model TenantSettings {
+  id       String @id @default(cuid())
+  tenantId String @unique @map("tenant_id")
+
+  // General settings
+  timezone           String @default("UTC")
+  dateFormat         String @default("YYYY-MM-DD") @map("date_format")
+  defaultWorkspaceMode String @default("SHARED") @map("default_workspace_mode")
+
+  // Security settings
+  requireMfa         Boolean @default(false) @map("require_mfa")
+  sessionTimeout     Int     @default(3600) @map("session_timeout") // seconds
+  ipAllowlist        String[] @default([]) @map("ip_allowlist")
+  allowedDomains     String[] @default([]) @map("allowed_domains")
+
+  // Workflow settings
+  maxConcurrentGoals     Int @default(5) @map("max_concurrent_goals")
+  defaultApprovalTimeout Int @default(3600) @map("default_approval_timeout") // seconds
+  autoReplanEnabled      Boolean @default(true) @map("auto_replan_enabled")
+  maxReplanAttempts      Int @default(3) @map("max_replan_attempts")
+
+  // Notification settings
+  notificationEmail     String? @map("notification_email")
+  slackWebhookUrl       String? @map("slack_webhook_url")
+  teamsWebhookUrl       String? @map("teams_webhook_url")
+  webhookSecretKey      String? @map("webhook_secret_key")
+
+  // Data retention
+  auditLogRetentionDays Int @default(365) @map("audit_log_retention_days")
+  goalRunRetentionDays  Int @default(90) @map("goal_run_retention_days")
+
+  // Feature flags
+  features Json @default("{}") // Feature flag overrides
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_settings")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Tenant Quota Entity
+// Usage quotas and limits per tenant
+// ============================================================================
+
+model TenantQuota {
+  id       String @id @default(cuid())
+  tenantId String @unique @map("tenant_id")
+
+  // Goal run limits
+  monthlyGoalRuns      Int @default(1000) @map("monthly_goal_runs")
+  monthlyGoalRunsUsed  Int @default(0) @map("monthly_goal_runs_used")
+
+  // LLM token limits
+  monthlyTokens        Int @default(1000000) @map("monthly_tokens")
+  monthlyTokensUsed    Int @default(0) @map("monthly_tokens_used")
+
+  // Storage limits (bytes)
+  storageLimit         BigInt @default(10737418240) @map("storage_limit") // 10GB
+  storageUsed          BigInt @default(0) @map("storage_used")
+
+  // Concurrent limits
+  maxConcurrentWorkspaces Int @default(10) @map("max_concurrent_workspaces")
+  maxUsersPerTenant       Int @default(50) @map("max_users_per_tenant")
+  maxTemplates            Int @default(100) @map("max_templates")
+  maxBatchSize            Int @default(50) @map("max_batch_size")
+
+  // API limits
+  apiRateLimitPerMinute Int @default(100) @map("api_rate_limit_per_minute")
+
+  // Reset tracking
+  quotaPeriodStart DateTime @default(now()) @map("quota_period_start")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_quotas")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// SSO Configuration Entity
+// SAML/SSO settings per tenant
+// ============================================================================
+
+model SSOConfiguration {
+  id       String @id @default(cuid())
+  tenantId String @unique @map("tenant_id")
+
+  // SSO type
+  provider String @default("saml") // saml, oidc
+
+  // SAML configuration
+  entityId          String? @map("entity_id")
+  ssoUrl            String? @map("sso_url")
+  sloUrl            String? @map("slo_url")
+  certificate       String? // IdP public certificate (PEM)
+  signatureAlgorithm String @default("sha256") @map("signature_algorithm")
+
+  // Attribute mapping
+  attributeMapping Json @default("{}") @map("attribute_mapping")
+  // Example: { "email": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress" }
+
+  // Just-in-time provisioning
+  jitProvisioning      Boolean @default(true) @map("jit_provisioning")
+  defaultRole          String  @default("member") @map("default_role")
+  autoUpdateAttributes Boolean @default(true) @map("auto_update_attributes")
+
+  // Domain validation
+  enforcedDomains String[] @default([]) @map("enforced_domains")
+  allowBypassSSO  Boolean  @default(false) @map("allow_bypass_sso")
+
+  // Status
+  enabled  Boolean @default(false)
+  verified Boolean @default(false)
+
+  // Metadata
+  idpMetadataUrl String? @map("idp_metadata_url")
+  spMetadataUrl  String? @map("sp_metadata_url")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("sso_configurations")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// LLM Provider Configuration Entity
+// Custom LLM provider settings per tenant
+// ============================================================================
+
+model LLMProviderConfig {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Provider info
+  provider  String // anthropic, openai, azure_openai, google_vertex, aws_bedrock
+  name      String // Display name
+  isDefault Boolean @default(false) @map("is_default")
+
+  // Configuration
+  apiKey      String? @map("api_key") // Encrypted
+  apiEndpoint String? @map("api_endpoint")
+  model       String? // Model ID to use
+  region      String? // For cloud providers
+
+  // Provider-specific settings
+  config Json @default("{}") // Additional provider-specific config
+
+  // Usage tracking
+  totalTokensUsed  BigInt @default(0) @map("total_tokens_used")
+  totalRequestsCount Int @default(0) @map("total_requests_count")
+  lastUsedAt       DateTime? @map("last_used_at")
+
+  // Fallback configuration
+  priority    Int     @default(0) // Lower = higher priority for fallback
+  isEnabled   Boolean @default(true) @map("is_enabled")
+  isFallback  Boolean @default(false) @map("is_fallback")
+
+  // Rate limiting
+  maxRequestsPerMinute Int? @map("max_requests_per_minute")
+  maxTokensPerRequest  Int? @map("max_tokens_per_request")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, name])
+  @@index([tenantId])
+  @@index([tenantId, isDefault])
+  @@index([provider])
+  @@map("llm_provider_configs")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Compliance Report Entity
+// Generated compliance reports (SOC2, GDPR)
+// ============================================================================
+
+model ComplianceReport {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Report info
+  reportType    String @map("report_type") // soc2, gdpr_article30, dsar, data_retention
+  reportName    String @map("report_name")
+  reportPeriod  String @map("report_period") // e.g., "2025-Q1", "2025-01"
+
+  // Date range
+  startDate DateTime @map("start_date")
+  endDate   DateTime @map("end_date")
+
+  // Report content
+  summary  String? // Executive summary
+  findings Json    @default("[]") // Array of findings/items
+  metrics  Json    @default("{}") // Key metrics
+
+  // Status
+  status       String   @default("generating") // generating, completed, failed
+  generatedAt  DateTime? @map("generated_at")
+  expiresAt    DateTime? @map("expires_at")
+
+  // Export info
+  exportFormat String? @map("export_format") // pdf, csv, json
+  exportUrl    String? @map("export_url")
+
+  // Audit
+  generatedBy String? @map("generated_by") // User ID or "system"
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, reportType])
+  @@index([reportType])
+  @@index([createdAt])
+  @@map("compliance_reports")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Data Processing Record Entity
+// GDPR Article 30 - Records of processing activities
+// ============================================================================
+
+model DataProcessingRecord {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // Processing activity info
+  activityName    String @map("activity_name")
+  activityDescription String? @map("activity_description")
+
+  // Data subjects
+  dataSubjectCategories String[] @default([]) @map("data_subject_categories")
+  // e.g., ["employees", "customers", "prospects"]
+
+  // Personal data categories
+  personalDataCategories String[] @default([]) @map("personal_data_categories")
+  // e.g., ["name", "email", "ip_address", "usage_data"]
+
+  // Legal basis
+  legalBasis String @map("legal_basis") // consent, contract, legal_obligation, vital_interests, public_task, legitimate_interests
+  legalBasisDetails String? @map("legal_basis_details")
+
+  // Purpose
+  processingPurposes String[] @default([]) @map("processing_purposes")
+
+  // Recipients
+  recipientCategories String[] @default([]) @map("recipient_categories")
+  thirdCountryTransfers String[] @default([]) @map("third_country_transfers")
+  transferSafeguards String? @map("transfer_safeguards")
+
+  // Retention
+  retentionPeriod     String? @map("retention_period") // e.g., "2 years", "until consent withdrawn"
+  retentionCriteria   String? @map("retention_criteria")
+
+  // Security measures
+  technicalMeasures      String[] @default([]) @map("technical_measures")
+  organizationalMeasures String[] @default([]) @map("organizational_measures")
+
+  // Status
+  status     String   @default("active") // active, archived, deleted
+  reviewDate DateTime? @map("review_date")
+  reviewedBy String?  @map("reviewed_by")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([activityName])
+  @@index([legalBasis])
+  @@index([status])
+  @@map("data_processing_records")
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// System Configuration
+// v1.0.0: Phase E - Maintenance mode handling
+// Key-value store for system-level configuration
+// ============================================================================
+
+model SystemConfig {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String @db.Text
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_config")
+  @@schema("workflow_orchestrator")
+}

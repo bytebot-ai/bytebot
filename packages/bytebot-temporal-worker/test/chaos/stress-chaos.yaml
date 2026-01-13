@@ -1,0 +1,98 @@
+# Chaos Mesh Stress Chaos Tests
+# Tests Temporal worker resilience under resource pressure
+#
+# Tests include:
+#   - CPU stress
+#   - Memory stress
+#   - I/O stress
+---
+# CPU Stress - Simulate high CPU usage
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: temporal-worker-cpu-stress
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: stress-chaos
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  stressors:
+    cpu:
+      workers: 2
+      load: 80  # 80% CPU load
+  duration: "120s"
+---
+# Memory Stress - Simulate memory pressure
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: temporal-worker-memory-stress
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: stress-chaos
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  stressors:
+    memory:
+      workers: 2
+      size: "256MB"
+  duration: "120s"
+---
+# Combined Stress - CPU + Memory
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: temporal-worker-combined-stress
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: stress-chaos
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  stressors:
+    cpu:
+      workers: 1
+      load: 50
+    memory:
+      workers: 1
+      size: "128MB"
+  duration: "180s"
+---
+# Temporal Server Stress - Test degraded Temporal performance
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: temporal-server-stress
+  namespace: temporal
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: stress-chaos
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - temporal
+    labelSelectors:
+      app.kubernetes.io/component: frontend
+  stressors:
+    cpu:
+      workers: 2
+      load: 70
+  duration: "120s"

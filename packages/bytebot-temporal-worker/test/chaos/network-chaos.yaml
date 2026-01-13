@@ -1,0 +1,160 @@
+# Chaos Mesh Network Chaos Tests
+# Tests Temporal worker resilience to network issues
+#
+# Tests include:
+#   - Network latency injection
+#   - Packet loss simulation
+#   - Network partition between clusters
+#   - DNS failures
+---
+# Network Latency - Simulate slow network
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: temporal-worker-network-delay
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: network-chaos
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  delay:
+    latency: "200ms"
+    correlation: "50"
+    jitter: "50ms"
+  target:
+    selector:
+      namespaces:
+        - temporal
+      labelSelectors:
+        app.kubernetes.io/component: frontend
+    mode: all
+  direction: both
+  duration: "120s"
+---
+# Packet Loss - Simulate unreliable network
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: temporal-worker-packet-loss
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: network-chaos
+spec:
+  action: loss
+  mode: all
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  loss:
+    loss: "25"
+    correlation: "50"
+  target:
+    selector:
+      namespaces:
+        - temporal
+      labelSelectors:
+        app.kubernetes.io/component: frontend
+    mode: all
+  direction: both
+  duration: "60s"
+---
+# Network Partition - Simulate ClusterMesh partition
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: clustermesh-partition
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: network-chaos
+spec:
+  action: partition
+  mode: all
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  target:
+    selector:
+      namespaces:
+        - temporal
+    mode: all
+  direction: both
+  duration: "30s"
+---
+# Bandwidth Limit - Simulate constrained network
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: temporal-worker-bandwidth-limit
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: network-chaos
+spec:
+  action: bandwidth
+  mode: all
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  bandwidth:
+    rate: "1mbps"
+    limit: 100
+    buffer: 10000
+  direction: both
+  duration: "120s"
+---
+# DNS Chaos - Simulate DNS failures
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: temporal-dns-chaos
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: dns-chaos
+spec:
+  action: error
+  mode: all
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  patterns:
+    - "temporal-frontend.temporal.svc.cluster.local"
+  duration: "30s"
+---
+# Kafka DNS Chaos - Test Kafka connectivity resilience
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: kafka-dns-chaos
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: dns-chaos
+spec:
+  action: random
+  mode: all
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  patterns:
+    - "core-cluster-kafka-bootstrap.kafka.svc.cluster.local"
+  duration: "60s"

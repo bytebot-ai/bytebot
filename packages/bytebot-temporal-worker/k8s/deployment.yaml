@@ -1,0 +1,244 @@
+---
+# Butler Vantage Temporal Worker - Kubernetes Deployment
+#
+# Production-ready deployment with:
+# - 3 replicas for high availability
+# - Resource limits and requests
+# - Health probes (liveness, readiness, startup)
+# - Pod anti-affinity for distribution
+# - Security context for non-root execution
+#
+# Version History:
+# - 1.3.1: Phase 13.3 - Enhanced planning prompt with desktop agent capabilities
+# - 1.3.0: Phase 13.0 - Resilience and recovery improvements
+# - 1.2.0: Phase 12 - In-house model routing
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bytebot-temporal-worker
+  namespace: bytebot
+  labels:
+    app: bytebot-temporal-worker
+    component: worker
+    tier: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: bytebot-temporal-worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: bytebot-temporal-worker
+        component: worker
+        tier: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9464"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: bytebot-temporal-worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+
+      # Spread across nodes for HA
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: bytebot-temporal-worker
+                topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: worker
+          image: jbutler1980/bytebot-temporal-worker:1.3.1
+          imagePullPolicy: Always
+
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+            - name: metrics
+              containerPort: 9464
+              protocol: TCP
+
+          env:
+            # Temporal connection
+            - name: TEMPORAL_ADDRESS
+              value: "temporal-frontend.temporal.svc.cluster.local:7233"
+            - name: TEMPORAL_NAMESPACE
+              value: "bytebot"
+            - name: TEMPORAL_TASK_QUEUE
+              value: "bytebot-goal-runs"
+
+            # Worker concurrency (tune based on pod resources)
+            - name: TEMPORAL_MAX_CONCURRENT_ACTIVITIES
+              value: "50"
+            - name: TEMPORAL_MAX_CONCURRENT_WORKFLOWS
+              value: "100"
+            - name: TEMPORAL_MAX_CACHED_WORKFLOWS
+              value: "500"
+
+            # Kafka connection (core cluster - existing deployment)
+            - name: KAFKA_BROKERS
+              value: "core-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
+            - name: KAFKA_CLIENT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+            # ByteBot services
+            - name: ORCHESTRATOR_URL
+              value: "http://bytebot-workflow-orchestrator.bytebot.svc.cluster.local:3000"
+            - name: TASK_CONTROLLER_URL
+              value: "http://bytebot-task-controller.bytebot.svc.cluster.local:3000"
+            - name: LLM_PROXY_URL
+              value: "http://bytebot-llm-proxy.bytebot.svc.cluster.local:3000"
+
+            # Observability
+            - name: TEMPORAL_METRICS_ENABLED
+              value: "true"
+            - name: TEMPORAL_METRICS_PORT
+              value: "9464"
+
+            # Node.js settings
+            - name: NODE_ENV
+              value: "production"
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=1024"
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1536Mi"
+
+          # Startup probe - allows 2 minutes for initialization
+          startupProbe:
+            httpGet:
+              path: /health/startup
+              port: http
+            failureThreshold: 24
+            periodSeconds: 5
+            timeoutSeconds: 3
+
+          # Liveness probe - is the process alive?
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 0
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          # Readiness probe - is it ready to receive work?
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+      terminationGracePeriodSeconds: 60
+
+---
+# Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bytebot-temporal-worker
+  namespace: bytebot
+
+---
+# Service (for health checks and metrics)
+apiVersion: v1
+kind: Service
+metadata:
+  name: bytebot-temporal-worker
+  namespace: bytebot
+  labels:
+    app: bytebot-temporal-worker
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+    - name: metrics
+      port: 9464
+      targetPort: metrics
+  selector:
+    app: bytebot-temporal-worker
+
+---
+# PodDisruptionBudget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bytebot-temporal-worker
+  namespace: bytebot
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: bytebot-temporal-worker
+
+---
+# HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: bytebot-temporal-worker
+  namespace: bytebot
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: bytebot-temporal-worker
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
