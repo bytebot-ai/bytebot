@@ -1,0 +1,162 @@
+---
+# ByteBot Kafka Topics - Event Sourcing for Temporal Workflows
+#
+# Topic naming convention: <domain>.<entity>.<event-type>
+# Follows enterprise Kafka best practices from Confluent and AWS MSK
+
+# ============================================================================
+# Goal Events Topic
+# ============================================================================
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: bytebot.goal.events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: core-cluster
+    app: bytebot
+    component: temporal-worker
+spec:
+  partitions: 12
+  replicas: 3
+  config:
+    # Retention: 30 days for event sourcing
+    retention.ms: "2592000000"
+    # Cleanup policy: delete old segments
+    cleanup.policy: delete
+    # Segment size: 500MB
+    segment.bytes: "524288000"
+    # Min in-sync replicas for durability
+    min.insync.replicas: "2"
+    # Compression: gzip for good compression ratio
+    compression.type: gzip
+    # Maximum message size: 10MB
+    max.message.bytes: "10485760"
+
+---
+# ============================================================================
+# Step Events Topic
+# ============================================================================
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: bytebot.step.events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: core-cluster
+    app: bytebot
+    component: temporal-worker
+spec:
+  partitions: 24  # Higher partition count for step-level granularity
+  replicas: 3
+  config:
+    # Retention: 14 days for step events
+    retention.ms: "1209600000"
+    cleanup.policy: delete
+    segment.bytes: "268435456"  # 256MB segments
+    min.insync.replicas: "2"
+    compression.type: gzip
+    max.message.bytes: "5242880"  # 5MB max
+
+---
+# ============================================================================
+# Audit Log Topic
+# ============================================================================
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: bytebot.audit.log
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: core-cluster
+    app: bytebot
+    component: temporal-worker
+    compliance: audit
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    # Retention: 1 year for compliance
+    retention.ms: "31536000000"
+    # Use compaction + deletion for audit logs
+    cleanup.policy: "compact,delete"
+    segment.bytes: "1073741824"  # 1GB segments
+    min.insync.replicas: "2"
+    compression.type: gzip
+    # Keep at least 1 year of data before compaction
+    min.compaction.lag.ms: "86400000"
+    max.message.bytes: "5242880"
+
+---
+# ============================================================================
+# Dead Letter Queue Topic
+# ============================================================================
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: bytebot.dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: core-cluster
+    app: bytebot
+    component: temporal-worker
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    # Retention: 90 days for debugging failed messages
+    retention.ms: "7776000000"
+    cleanup.policy: delete
+    segment.bytes: "268435456"
+    min.insync.replicas: "2"
+    compression.type: gzip
+
+---
+# ============================================================================
+# Metrics Events Topic (for real-time dashboards)
+# ============================================================================
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: bytebot.metrics.events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: core-cluster
+    app: bytebot
+    component: temporal-worker
+spec:
+  partitions: 12
+  replicas: 3
+  config:
+    # Retention: 24 hours for real-time metrics
+    retention.ms: "86400000"
+    cleanup.policy: delete
+    segment.bytes: "134217728"  # 128MB segments
+    min.insync.replicas: "2"
+    compression.type: lz4  # Fast compression for metrics
+
+---
+# ============================================================================
+# Workflow State Changes Topic (for CDC/replays)
+# ============================================================================
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: bytebot.workflow.state
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: core-cluster
+    app: bytebot
+    component: temporal-worker
+spec:
+  partitions: 12
+  replicas: 3
+  config:
+    # Compacted topic for latest state
+    cleanup.policy: compact
+    segment.bytes: "268435456"
+    min.insync.replicas: "2"
+    compression.type: gzip
+    # Aggressive compaction settings
+    min.cleanable.dirty.ratio: "0.1"
+    delete.retention.ms: "86400000"

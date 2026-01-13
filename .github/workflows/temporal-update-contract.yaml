@@ -1,0 +1,45 @@
+name: Temporal Update Contract
+
+on:
+  pull_request:
+    paths:
+      - "packages/bytebot-temporal-worker/**"
+      - "packages/bytebot-workflow-orchestrator/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/bytebot-temporal-worker/**"
+      - "packages/bytebot-workflow-orchestrator/**"
+
+permissions:
+  contents: read
+
+jobs:
+  temporal-update-contract:
+    name: userPromptResolved Update contract
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            packages/bytebot-temporal-worker/package-lock.json
+
+      - name: Install temporal-worker dependencies
+        run: |
+          cd packages/bytebot-temporal-worker
+          npm ci
+
+      - name: Run Temporal workflow contract tests
+        run: |
+          cd packages/bytebot-temporal-worker
+          npm run test:workflow
+

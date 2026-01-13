@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.git
+.github
+.env
+.env.*
+npm-debug.log
+yarn-error.log
+*.log

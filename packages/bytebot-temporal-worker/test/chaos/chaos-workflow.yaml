@@ -1,0 +1,154 @@
+# Chaos Mesh Workflow
+# Orchestrates a complete chaos testing scenario
+#
+# This workflow tests the entire system resilience by:
+# 1. Starting with network chaos
+# 2. Adding pod failures
+# 3. Injecting stress
+# 4. Testing recovery
+#
+# Usage:
+#   kubectl apply -f test/chaos/chaos-workflow.yaml
+#   kubectl get workflow temporal-resilience-test -n bytebot
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: temporal-resilience-test
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: workflow
+spec:
+  entry: resilience-test-entry
+  templates:
+    - name: resilience-test-entry
+      templateType: Serial
+      children:
+        - baseline-check
+        - network-degradation
+        - recovery-check-1
+        - pod-failure-test
+        - recovery-check-2
+        - stress-test
+        - final-check
+
+    # Step 1: Baseline check (no chaos)
+    - name: baseline-check
+      templateType: Suspend
+      suspend:
+        duration: "30s"
+
+    # Step 2: Network degradation
+    - name: network-degradation
+      templateType: NetworkChaos
+      networkChaos:
+        action: delay
+        mode: all
+        selector:
+          namespaces:
+            - bytebot
+          labelSelectors:
+            app: bytebot-temporal-worker
+        delay:
+          latency: "100ms"
+          jitter: "50ms"
+        direction: both
+        duration: "60s"
+
+    # Step 3: Recovery check after network chaos
+    - name: recovery-check-1
+      templateType: Suspend
+      suspend:
+        duration: "30s"
+
+    # Step 4: Pod failure test
+    - name: pod-failure-test
+      templateType: PodChaos
+      podChaos:
+        action: pod-failure
+        mode: one
+        selector:
+          namespaces:
+            - bytebot
+          labelSelectors:
+            app: bytebot-temporal-worker
+        duration: "60s"
+
+    # Step 5: Recovery check after pod failure
+    - name: recovery-check-2
+      templateType: Suspend
+      suspend:
+        duration: "45s"
+
+    # Step 6: Stress test
+    - name: stress-test
+      templateType: StressChaos
+      stressChaos:
+        mode: all
+        selector:
+          namespaces:
+            - bytebot
+          labelSelectors:
+            app: bytebot-temporal-worker
+        stressors:
+          cpu:
+            workers: 1
+            load: 60
+        duration: "60s"
+
+    # Step 7: Final health check
+    - name: final-check
+      templateType: Suspend
+      suspend:
+        duration: "30s"
+---
+# Schedule for regular chaos testing (optional)
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: weekly-resilience-test
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: schedule
+spec:
+  schedule: "0 2 * * 0"  # Every Sunday at 2 AM
+  type: Workflow
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  workflow:
+    entry: resilience-test-entry
+    templates:
+      - name: resilience-test-entry
+        templateType: Serial
+        children:
+          - quick-pod-test
+          - quick-network-test
+
+      - name: quick-pod-test
+        templateType: PodChaos
+        podChaos:
+          action: pod-kill
+          mode: one
+          selector:
+            namespaces:
+              - bytebot
+            labelSelectors:
+              app: bytebot-temporal-worker
+          duration: "30s"
+
+      - name: quick-network-test
+        templateType: NetworkChaos
+        networkChaos:
+          action: delay
+          mode: one
+          selector:
+            namespaces:
+              - bytebot
+            labelSelectors:
+              app: bytebot-temporal-worker
+          delay:
+            latency: "50ms"
+          direction: both
+          duration: "30s"

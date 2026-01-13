@@ -1,0 +1,75 @@
+# Phase 13.1: Temporal Worker Egress Policy with CIDR Fallback
+#
+# Research-based improvements (Phase 13):
+# - toEntities: all requires identity resolution which can fail during sync
+# - CIDR fallback rules catch traffic before identity resolution fails
+# - Explicit DNS rules ensure service discovery works
+# - This prevents transient EPERM errors during ClusterMesh identity sync
+#
+# Cluster CIDRs (Pod Networks):
+# - aiml: 192.173.0.0/16 (LiteLLM, LLM models)
+# - core: 192.169.0.0/16 (Temporal, Kafka)
+# - agent: 192.171.0.0/16 (local services)
+# - database: 192.170.0.0/16 (PostgreSQL)
+# - edge: 192.172.0.0/16 (edge services)
+# - store: 192.174.0.0/16 (storage services)
+#
+# Service CIDRs:
+# - 10.144.0.0/12 (all cluster service IPs)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: temporal-worker-egress
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/component: temporal-worker
+    app.kubernetes.io/part-of: bytebot
+    phase: "13.1"
+spec:
+  description: "Phase 13.1: Temporal worker egress with CIDR fallback for identity sync reliability"
+  endpointSelector:
+    matchLabels:
+      app: bytebot-temporal-worker
+  egress:
+    # Rule 1: Allow all entity-based traffic (primary)
+    # This works when identity is properly synchronized
+    - toEntities:
+        - all
+
+    # Rule 2: CIDR fallback for cross-cluster pod networks
+    # Catches traffic during identity synchronization window (200-500ms, up to seconds under load)
+    # This prevents EPERM errors when identity hasn't propagated yet
+    - toCIDRSet:
+        # All cluster pod CIDRs
+        - cidr: 192.168.0.0/16   # Generic private range
+        - cidr: 192.169.0.0/16   # core cluster pods
+        - cidr: 192.170.0.0/16   # database cluster pods
+        - cidr: 192.171.0.0/16   # agent cluster pods (local)
+        - cidr: 192.172.0.0/16   # edge cluster pods
+        - cidr: 192.173.0.0/16   # aiml cluster pods (LiteLLM)
+        - cidr: 192.174.0.0/16   # store cluster pods
+        # Service CIDRs
+        - cidr: 10.144.0.0/12    # Kubernetes service IPs
+        - cidr: 10.96.0.0/12     # Default Kubernetes service CIDR
+
+    # Rule 3: Explicit DNS egress (critical for service discovery)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # Rule 4: External access (world entity for external APIs)
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
