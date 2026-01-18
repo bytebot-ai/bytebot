@@ -204,6 +204,7 @@ export class DesktopLoopDetector {
   private streakCount = 0;
   private streakFirstHash: string | null = null;
   private streakHadMeaningfulChange = false;
+  private consecutiveWaitCount = 0;
 
   record(sample: DesktopActionSample): { interrupt: boolean; rule?: string } {
     this.recent.push(sample);
@@ -213,6 +214,19 @@ export class DesktopLoopDetector {
 
     const signature = sample.signature;
     const hash = sample.screenshotHash ?? null;
+    const actionType = signature.split('(')[0] || signature;
+
+    if (actionType === 'computer_wait') {
+      this.consecutiveWaitCount++;
+    } else {
+      this.consecutiveWaitCount = 0;
+    }
+
+    // Special-case: repeated waits are a strong signal of a stalled control loop,
+    // even if the screen hash changes due to animations/spinners.
+    if (this.consecutiveWaitCount >= DESKTOP_LOOP_REPEAT_THRESHOLD) {
+      return { interrupt: true, rule: 'wait_loop_excessive' };
+    }
 
     if (signature !== this.streakSignature) {
       this.streakSignature = signature;
@@ -288,8 +302,7 @@ export function buildDesktopActionSignature(
       return `${name}(len=${text.length},hasNewline=${text.includes('\n')},sensitive=${isSensitive})`;
     }
     case 'computer_wait': {
-      const duration = typeof input?.duration === 'number' ? Math.floor(input.duration) : null;
-      return `${name}(duration=${duration ?? '∅'})`;
+      return name;
     }
     case 'computer_click_mouse': {
       const button = typeof input?.button === 'string' ? input.button : 'left';
@@ -300,4 +313,3 @@ export function buildDesktopActionSignature(
       return name;
   }
 }
-

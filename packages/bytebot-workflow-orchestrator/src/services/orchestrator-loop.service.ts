@@ -67,7 +67,15 @@ import { DbTransientService } from './db-transient.service';
 import { MaintenanceModeService, MaintenanceState } from './maintenance-mode.service';
 import { FailureClassificationService, FailureCategory } from './failure-classification.service';
 import { GoalCheckpointService } from './goal-checkpoint.service';
-import { ChecklistItemStatus, ExecutionSurface, StepType, UserPromptKind } from '@prisma/client';
+import {
+  ChecklistItemStatus,
+  ExecutionSurface,
+  GoalSpecStatus,
+  StepType,
+  UserPromptCancelReason,
+  UserPromptKind,
+  UserPromptStatus,
+} from '@prisma/client';
 import { createId } from '@paralleldrive/cuid2';
 import { UserPromptService } from './user-prompt.service';
 import { OutboxService } from './outbox.service';
@@ -904,10 +912,107 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       hasUserInteractionTool(item.suggestedTools);
 
     if (isUserInputRequired) {
-      const kind =
-        item.executionSurface === ExecutionSurface.DESKTOP || item.requiresDesktop
-          ? UserPromptKind.DESKTOP_TAKEOVER
-          : UserPromptKind.TEXT_CLARIFICATION;
+      const isDesktopPrompt =
+        item.executionSurface === ExecutionSurface.DESKTOP || item.requiresDesktop;
+
+      // Gold invariant (I1): strategy must never block progress.
+      // In a no-chat product, TEXT_CLARIFICATION prompts are reserved for true external requirements only.
+      // If GoalSpec is COMPLETE, treat USER_INPUT_REQUIRED text steps as "strategy" and auto-resolve by policy.
+      if (!isDesktopPrompt) {
+        const goalSpec = await this.prisma.goalSpec.findUnique({
+          where: { goalRunId: goalRun.id },
+          select: { status: true },
+        });
+
+        // If intake is incomplete (or missing), request GOAL_INTAKE rather than creating ad-hoc prompts.
+        if (!goalSpec || goalSpec.status !== GoalSpecStatus.COMPLETE) {
+          await this.goalIntakeService.ensureGoalSpecReadyForPlanning({
+            goalRunId: goalRun.id,
+            tenantId: goalRun.tenantId,
+          });
+          return;
+        }
+
+        const now = new Date();
+        const decision = {
+          policy: 'NO_STRATEGY_PROMPTS',
+          outcome: 'AUTO_RESOLVED_STRATEGY',
+          message:
+            'Proceed with system defaults and continue. Do not ask the user for strategy choices.',
+          step: {
+            checklistItemId: item.id,
+            description: item.description,
+          },
+        };
+
+        // If this step was already blocked by a prompt, cancel that prompt so the run can proceed.
+        if (item.blockedByPromptId) {
+          await this.prisma.userPrompt.updateMany({
+            where: {
+              id: item.blockedByPromptId,
+              status: UserPromptStatus.OPEN,
+            },
+            data: {
+              status: UserPromptStatus.CANCELLED,
+              cancelReason: UserPromptCancelReason.SUPERSEDED,
+              cancelledAt: now,
+            },
+          });
+        }
+
+        const completed = await this.prisma.checklistItem.updateMany({
+          where: {
+            id: item.id,
+            status: {
+              in: [
+                ChecklistItemStatus.PENDING,
+                ChecklistItemStatus.IN_PROGRESS,
+                ChecklistItemStatus.BLOCKED,
+              ],
+            },
+          },
+          data: {
+            status: ChecklistItemStatus.COMPLETED,
+            blockedByPromptId: null,
+            blockedReason: null,
+            blockedAt: null,
+            startedAt: item.startedAt ?? now,
+            completedAt: now,
+            actualOutcome: JSON.stringify(decision, null, 2),
+          },
+        });
+
+        // If we were waiting due to this prompt step, resume the run back to EXECUTING.
+        const phaseUpdated = await this.prisma.goalRun.updateMany({
+          where: {
+            id: goalRun.id,
+            phase: GoalRunPhase.WAITING_USER_INPUT,
+          },
+          data: { phase: GoalRunPhase.EXECUTING },
+        });
+
+        if (completed.count > 0 || phaseUpdated.count > 0) {
+          if (phaseUpdated.count > 0) {
+            this.eventEmitter.emit('goal-run.phase-changed', {
+              goalRunId: goalRun.id,
+              previousPhase: goalRun.phase,
+              newPhase: GoalRunPhase.EXECUTING,
+            });
+          }
+
+          await this.goalRunService.createActivityEvent(goalRun.id, {
+            eventType: 'STEP_AUTO_RESOLVED',
+            title: `Auto-resolved strategy step: ${item.description}`,
+            severity: 'info',
+            checklistItemId: item.id,
+            details: decision,
+          });
+        }
+
+        return;
+      }
+
+      const kind = UserPromptKind.DESKTOP_TAKEOVER;
 
       const prompt = await this.userPromptService.ensureOpenPromptForStep({
         tenantId: goalRun.tenantId,

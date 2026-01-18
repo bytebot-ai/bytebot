@@ -2,18 +2,22 @@ import { OrchestratorLoopService } from './orchestrator-loop.service';
 import {
   ChecklistItemStatus,
   ExecutionSurface,
+  GoalSpecStatus,
   GoalRunPhase,
   StepType,
   UserPromptKind,
 } from '@prisma/client';
 
 describe('OrchestratorLoopService USER_INPUT_REQUIRED gate', () => {
-  it('creates prompt, blocks step, and enqueues outbox without dispatch', async () => {
+  it('creates DESKTOP_TAKEOVER prompt, blocks step, and enqueues outbox without dispatch', async () => {
     const prisma = {
       checklistItem: {
         findUnique: jest.fn(),
         updateMany: jest.fn(),
         update: jest.fn(),
+      },
+      goalSpec: {
+        findUnique: jest.fn(),
       },
       goalRun: {
         updateMany: jest.fn(),
@@ -22,6 +26,10 @@ describe('OrchestratorLoopService USER_INPUT_REQUIRED gate', () => {
 
     const goalRunService = {
       createActivityEvent: jest.fn(),
+    } as any;
+
+    const goalIntakeService = {
+      ensureGoalSpecReadyForPlanning: jest.fn(),
     } as any;
 
     const configService = {
@@ -44,7 +52,7 @@ describe('OrchestratorLoopService USER_INPUT_REQUIRED gate', () => {
       prisma,
       goalRunService,
       {} as any,
-      {} as any,
+      goalIntakeService,
       {} as any,
       {} as any,
       {} as any,
@@ -62,18 +70,19 @@ describe('OrchestratorLoopService USER_INPUT_REQUIRED gate', () => {
       description: 'Confirm details with the user',
       expectedOutcome: 'Details confirmed',
       suggestedTools: ['ASK_USER'],
-      requiresDesktop: false,
-      executionSurface: ExecutionSurface.TEXT_ONLY,
+      requiresDesktop: true,
+      executionSurface: ExecutionSurface.DESKTOP,
       type: StepType.USER_INPUT_REQUIRED,
       startedAt: null,
+      blockedByPromptId: null,
     };
 
     prisma.checklistItem.findUnique.mockResolvedValueOnce(item);
 
     const prompt = {
       id: 'p-1',
-      kind: UserPromptKind.TEXT_CLARIFICATION,
-      dedupeKey: 'prompt:gr-1:ci-1:TEXT_CLARIFICATION',
+      kind: UserPromptKind.DESKTOP_TAKEOVER,
+      dedupeKey: 'prompt:gr-1:ci-1:DESKTOP_TAKEOVER',
     };
 
     userPromptService.ensureOpenPromptForStep.mockResolvedValueOnce(prompt);
@@ -126,14 +135,21 @@ describe('OrchestratorLoopService USER_INPUT_REQUIRED gate', () => {
 
     // Ensure we never dispatch agent work for prompt steps
     expect(eventEmitter.emit).not.toHaveBeenCalledWith('workflow.node-ready', expect.anything());
+    expect(goalIntakeService.ensureGoalSpecReadyForPlanning).not.toHaveBeenCalled();
   });
 
-  it('is idempotent: second tick does not re-emit activity', async () => {
+  it('auto-resolves TEXT_ONLY USER_INPUT_REQUIRED when GoalSpec is COMPLETE', async () => {
     const prisma = {
       checklistItem: {
         findUnique: jest.fn(),
         updateMany: jest.fn(),
         update: jest.fn(),
+      },
+      goalSpec: {
+        findUnique: jest.fn(),
+      },
+      userPrompt: {
+        updateMany: jest.fn(),
       },
       goalRun: {
         updateMany: jest.fn(),
@@ -142,6 +158,10 @@ describe('OrchestratorLoopService USER_INPUT_REQUIRED gate', () => {
 
     const goalRunService = {
       createActivityEvent: jest.fn(),
+    } as any;
+
+    const goalIntakeService = {
+      ensureGoalSpecReadyForPlanning: jest.fn(),
     } as any;
 
     const configService = {
@@ -164,7 +184,7 @@ describe('OrchestratorLoopService USER_INPUT_REQUIRED gate', () => {
       prisma,
       goalRunService,
       {} as any,
-      {} as any,
+      goalIntakeService,
       {} as any,
       {} as any,
       {} as any,
@@ -179,37 +199,42 @@ describe('OrchestratorLoopService USER_INPUT_REQUIRED gate', () => {
 
     const item = {
       id: 'ci-1',
-      description: 'Confirm details with the user',
-      expectedOutcome: 'Details confirmed',
+      description: 'Ask the user which flight site to use',
+      expectedOutcome: 'Site chosen',
       suggestedTools: ['ASK_USER'],
       requiresDesktop: false,
       executionSurface: ExecutionSurface.TEXT_ONLY,
-      type: StepType.EXECUTE, // Legacy backfill; ASK_USER is the explicit machine flag
+      type: StepType.USER_INPUT_REQUIRED,
       startedAt: null,
+      blockedByPromptId: null,
     };
 
-    prisma.checklistItem.findUnique.mockResolvedValue(item);
-
-    const prompt = {
-      id: 'p-1',
-      kind: UserPromptKind.TEXT_CLARIFICATION,
-      dedupeKey: 'prompt:gr-1:ci-1:TEXT_CLARIFICATION',
-    };
-
-    userPromptService.ensureOpenPromptForStep.mockResolvedValue(prompt);
-    prisma.checklistItem.updateMany
-      .mockResolvedValueOnce({ count: 1 })
-      .mockResolvedValueOnce({ count: 0 });
-    prisma.goalRun.updateMany
-      .mockResolvedValueOnce({ count: 1 })
-      .mockResolvedValueOnce({ count: 0 });
+    prisma.checklistItem.findUnique.mockResolvedValueOnce(item);
+    prisma.goalSpec.findUnique.mockResolvedValueOnce({ status: GoalSpecStatus.COMPLETE });
+    prisma.checklistItem.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.goalRun.updateMany.mockResolvedValueOnce({ count: 0 });
 
     await (service as any).executeStep({ id: 'gr-1', tenantId: 't-1', phase: GoalRunPhase.EXECUTING }, item.id);
-    await (service as any).executeStep({ id: 'gr-1', tenantId: 't-1', phase: GoalRunPhase.EXECUTING }, item.id);
 
-    expect(goalRunService.createActivityEvent).toHaveBeenCalledTimes(1);
-    expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
-    expect(outboxService.enqueueOnce).toHaveBeenCalledTimes(2); // safe: deduped by key in DB
-    expect(prisma.checklistItem.update).not.toHaveBeenCalled();
+    expect(userPromptService.ensureOpenPromptForStep).not.toHaveBeenCalled();
+    expect(outboxService.enqueueOnce).not.toHaveBeenCalled();
+    expect(goalIntakeService.ensureGoalSpecReadyForPlanning).not.toHaveBeenCalled();
+
+    expect(prisma.checklistItem.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: item.id,
+        status: {
+          in: [ChecklistItemStatus.PENDING, ChecklistItemStatus.IN_PROGRESS, ChecklistItemStatus.BLOCKED],
+        },
+      },
+      data: expect.objectContaining({
+        status: ChecklistItemStatus.COMPLETED,
+      }),
+    });
+
+    expect(goalRunService.createActivityEvent).toHaveBeenCalledWith('gr-1', expect.objectContaining({
+      eventType: 'STEP_AUTO_RESOLVED',
+      checklistItemId: item.id,
+    }));
   });
 });

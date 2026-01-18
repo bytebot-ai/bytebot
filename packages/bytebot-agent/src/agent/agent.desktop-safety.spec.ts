@@ -98,6 +98,30 @@ describe('agent.desktop-safety', () => {
 
       expect(interrupted).toBe(false);
     });
+
+    it('interrupts on repeated waits even if the screen hash changes (spinner/animation case)', () => {
+      const detector = new DesktopLoopDetector();
+
+      const hashes = [
+        'ffffffffffffffff',
+        '0000000000000000',
+        'ffffffffffffffff',
+        '0000000000000000',
+        'ffffffffffffffff',
+      ];
+
+      let interrupted = false;
+      for (let i = 0; i < hashes.length; i++) {
+        const res = detector.record({
+          atMs: Date.now(),
+          signature: 'computer_wait',
+          screenshotHash: hashes[i],
+        });
+        interrupted = res.interrupt;
+      }
+
+      expect(interrupted).toBe(true);
+    });
   });
 
   describe('buildDesktopActionSignature', () => {
@@ -115,4 +139,3 @@ describe('agent.desktop-safety', () => {
     });
   });
 });
-

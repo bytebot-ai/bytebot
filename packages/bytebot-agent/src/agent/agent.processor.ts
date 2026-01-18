@@ -93,6 +93,8 @@ export class AgentProcessor {
   private desktopLoopDetector = new DesktopLoopDetector();
   private desktopToolContractViolations = 0;
   private desktopActionsWithoutObservation = 0;
+  private pendingForcedScreenshot = false;
+  private pendingForcedScreenshotReason: 'actions_budget' | null = null;
   private pendingDesktopNeedsHelp: ReturnType<typeof buildNeedsHelpResult> | null =
     null;
   // v2.2.7: Mutex to prevent concurrent iteration execution
@@ -744,6 +746,62 @@ export class AgentProcessor {
               );
               generatedToolResults.push(result);
 
+              if (
+                this.pendingForcedScreenshot &&
+                this.pendingForcedScreenshotReason === 'actions_budget' &&
+                desktopUrl &&
+                !this.pendingDesktopNeedsHelp
+              ) {
+                const actionsWithoutObservation = this.desktopActionsWithoutObservation;
+                this.pendingForcedScreenshot = false;
+                this.pendingForcedScreenshotReason = null;
+
+                const forcedToolUseId = `forced_screenshot_${Date.now()}`;
+                const forcedScreenshotBlock = {
+                  type: MessageContentType.ToolUse,
+                  id: forcedToolUseId,
+                  name: 'computer_screenshot',
+                  input: {},
+                } as any;
+
+                const forcedResult = await handleComputerToolUse(
+                  forcedScreenshotBlock,
+                  this.logger,
+                  actionContext,
+                );
+
+                const content = Array.isArray((forcedResult as any).content)
+                  ? ((forcedResult as any).content as any[])
+                  : [];
+
+                const images = content.filter(
+                  (c) => c && typeof c === 'object' && c.type === MessageContentType.Image,
+                );
+
+                if (images.length > 0) {
+                  generatedToolResults.push({
+                    type: MessageContentType.Text,
+                    text: '[System] Forced screenshot for observation (actions budget).',
+                  } as any);
+                  generatedToolResults.push(...(images as any));
+                } else {
+                  // If we cannot observe, we must stop deterministically (typed interrupt).
+                  this.pendingDesktopNeedsHelp = buildNeedsHelpResult({
+                    errorCode: 'UI_OBSERVATION_FAILED',
+                    message: 'Forced screenshot failed; cannot safely proceed without observation.',
+                    details: {
+                      reason: 'forced_screenshot_failed',
+                      actionsWithoutObservation,
+                      limit: DESKTOP_MAX_ACTIONS_WITHOUT_OBSERVATION,
+                      lastToolResult: content,
+                    },
+                  });
+                  this.eventEmitter.emit('desktop.interrupt', {
+                    reasonCode: 'UI_OBSERVATION_FAILED',
+                  });
+                }
+              }
+
               if (this.pendingDesktopNeedsHelp) {
                 break;
               }
@@ -981,17 +1039,12 @@ export class AgentProcessor {
       isUiAffecting &&
       this.desktopActionsWithoutObservation >= DESKTOP_MAX_ACTIONS_WITHOUT_OBSERVATION
     ) {
-      this.pendingDesktopNeedsHelp = buildNeedsHelpResult({
-        errorCode: 'UI_OBSERVATION_FAILED',
-        details: {
-          actionsWithoutObservation: this.desktopActionsWithoutObservation,
-          limit: DESKTOP_MAX_ACTIONS_WITHOUT_OBSERVATION,
-          lastActionType: action.actionType,
-          lastSignature: action.actionSignature,
-        },
-      });
-      this.eventEmitter.emit('desktop.interrupt', {
-        reasonCode: 'UI_OBSERVATION_FAILED',
+      // Gold rule: do not continue “blind”. Instead of immediately interrupting, force an observation.
+      // If the forced screenshot fails, we fall back to the typed interrupt path.
+      this.pendingForcedScreenshot = true;
+      this.pendingForcedScreenshotReason = 'actions_budget';
+      this.eventEmitter.emit('desktop.forced_screenshot', {
+        reason: 'actions_budget',
       });
       return;
     }

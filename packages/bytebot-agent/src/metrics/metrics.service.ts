@@ -88,6 +88,13 @@ export class MetricsService {
     registers: [this.registry],
   });
 
+  private readonly desktopForcedScreenshotTotal = new Counter({
+    name: 'bytebot_desktop_forced_screenshot_total',
+    help: 'Total forced desktop screenshots injected to enforce observation',
+    labelNames: ['reason'] as const,
+    registers: [this.registry],
+  });
+
   constructor() {
     collectDefaultMetrics({ register: this.registry });
   }
@@ -152,5 +159,10 @@ export class MetricsService {
   @OnEvent('desktop.loop.detected')
   onDesktopLoopDetected(event: { rule: string }): void {
     this.desktopLoopDetectedTotal.inc({ rule: event.rule });
+  }
+
+  @OnEvent('desktop.forced_screenshot')
+  onDesktopForcedScreenshot(event: { reason: string }): void {
+    this.desktopForcedScreenshotTotal.inc({ reason: event.reason });
   }
 }

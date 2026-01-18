@@ -28,6 +28,8 @@ import {
   ExecutionSurface,
   Prisma,
   StepType,
+  UserPromptCancelReason,
+  UserPromptStatus,
 } from '@prisma/client';
 import { TemporalWorkflowService } from '../temporal/temporal-workflow.service';
 import { FeatureFlagService } from '../temporal/feature-flag.service';
@@ -672,15 +674,34 @@ export class GoalRunService {
   async cancelGoalRun(goalRunId: string, reason?: string): Promise<GoalRunResponse> {
     this.logger.log(`Cancelling goal run ${goalRunId}: ${reason}`);
 
-    const goalRun = await this.prisma.goalRun.update({
-      where: { id: goalRunId },
-      data: {
-        status: GoalRunStatus.CANCELLED,
-        phase: GoalRunPhase.FAILED,
-        error: reason || 'Cancelled by user',
-        completedAt: new Date(),
-      },
-    });
+    const now = new Date();
+
+    const [goalRun, cancelledPrompts] = await this.prisma.$transaction([
+      this.prisma.goalRun.update({
+        where: { id: goalRunId },
+        data: {
+          status: GoalRunStatus.CANCELLED,
+          phase: GoalRunPhase.FAILED,
+          error: reason || 'Cancelled by user',
+          completedAt: now,
+        },
+      }),
+      this.prisma.userPrompt.updateMany({
+        where: {
+          goalRunId,
+          status: UserPromptStatus.OPEN,
+        },
+        data: {
+          status: UserPromptStatus.CANCELLED,
+          cancelReason: UserPromptCancelReason.RUN_ENDED,
+          cancelledAt: now,
+        },
+      }),
+    ]);
+
+    if (cancelledPrompts.count > 0) {
+      this.logger.log(`Cancelled ${cancelledPrompts.count} OPEN user prompt(s) for goal run ${goalRunId}`);
+    }
 
     // Cancel Temporal workflow if active (preferred path)
     if (goalRun.workflowRunId && this.temporalWorkflowService?.isEnabled()) {
@@ -723,14 +744,33 @@ export class GoalRunService {
   async completeGoalRun(goalRunId: string): Promise<GoalRunResponse> {
     this.logger.log(`Completing goal run ${goalRunId}`);
 
-    const goalRun = await this.prisma.goalRun.update({
-      where: { id: goalRunId },
-      data: {
-        status: GoalRunStatus.COMPLETED,
-        phase: GoalRunPhase.COMPLETED,
-        completedAt: new Date(),
-      },
-    });
+    const now = new Date();
+
+    const [goalRun, cancelledPrompts] = await this.prisma.$transaction([
+      this.prisma.goalRun.update({
+        where: { id: goalRunId },
+        data: {
+          status: GoalRunStatus.COMPLETED,
+          phase: GoalRunPhase.COMPLETED,
+          completedAt: now,
+        },
+      }),
+      this.prisma.userPrompt.updateMany({
+        where: {
+          goalRunId,
+          status: UserPromptStatus.OPEN,
+        },
+        data: {
+          status: UserPromptStatus.CANCELLED,
+          cancelReason: UserPromptCancelReason.RUN_ENDED,
+          cancelledAt: now,
+        },
+      }),
+    ]);
+
+    if (cancelledPrompts.count > 0) {
+      this.logger.log(`Cancelled ${cancelledPrompts.count} OPEN user prompt(s) for goal run ${goalRunId}`);
+    }
 
     this.eventEmitter.emit('goal-run.completed', { goalRunId });
 
@@ -748,15 +788,34 @@ export class GoalRunService {
   async failGoalRun(goalRunId: string, error: string): Promise<GoalRunResponse> {
     this.logger.log(`Failing goal run ${goalRunId}: ${error}`);
 
-    const goalRun = await this.prisma.goalRun.update({
-      where: { id: goalRunId },
-      data: {
-        status: GoalRunStatus.FAILED,
-        phase: GoalRunPhase.FAILED,
-        error,
-        completedAt: new Date(),
-      },
-    });
+    const now = new Date();
+
+    const [goalRun, cancelledPrompts] = await this.prisma.$transaction([
+      this.prisma.goalRun.update({
+        where: { id: goalRunId },
+        data: {
+          status: GoalRunStatus.FAILED,
+          phase: GoalRunPhase.FAILED,
+          error,
+          completedAt: now,
+        },
+      }),
+      this.prisma.userPrompt.updateMany({
+        where: {
+          goalRunId,
+          status: UserPromptStatus.OPEN,
+        },
+        data: {
+          status: UserPromptStatus.CANCELLED,
+          cancelReason: UserPromptCancelReason.RUN_ENDED,
+          cancelledAt: now,
+        },
+      }),
+    ]);
+
+    if (cancelledPrompts.count > 0) {
+      this.logger.log(`Cancelled ${cancelledPrompts.count} OPEN user prompt(s) for goal run ${goalRunId}`);
+    }
 
     this.eventEmitter.emit('goal-run.failed', { goalRunId, error });
 
