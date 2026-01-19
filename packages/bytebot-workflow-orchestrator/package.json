@@ -21,7 +21,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
-    "maintenance:unstick-strategy-prompts": "ts-node scripts/unstick-strategy-prompts.ts --dry-run"
+    "maintenance:unstick-strategy-prompts": "ts-node scripts/unstick-strategy-prompts.ts --dry-run",
+    "maintenance:unstick-desktop-not-allowed-prompts": "ts-node scripts/unstick-desktop-not-allowed-prompts.ts --dry-run"
   },
   "dependencies": {
     "@kubernetes/client-node": "^0.22.3",
