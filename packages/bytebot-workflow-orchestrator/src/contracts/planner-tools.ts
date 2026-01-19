@@ -75,6 +75,14 @@ const INTERACTION_TOOL_ALIASES: Record<string, CanonicalInteractionToolToken> = 
   ask_approval: 'APPROVAL',
 };
 
+// Planner/tooling drift aliases for execution tools.
+// Keep this list intentionally small and auditable: these map to existing canonical tool tokens.
+const EXECUTION_TOOL_ALIASES: Record<string, string> = {
+  // Common LLM/planner synonym for desktop browsing.
+  web_browser: 'browser',
+  webbrowser: 'browser',
+};
+
 // When GoalRun.constraints.allowedTools is missing, we still enforce a contract-level
 // allowlist to fail-closed against "invented tools" and schema drift.
 const DEFAULT_EXECUTION_TOOL_TOKENS: ReadonlyArray<string> = [
@@ -125,6 +133,11 @@ function normalizeToolTokenKey(token: string): string {
 
 export function toCanonicalInteractionToolToken(token: string): CanonicalInteractionToolToken | null {
   return INTERACTION_TOOL_ALIASES[normalizeToolTokenKey(token)] ?? null;
+}
+
+function toCanonicalExecutionToolKey(token: string): string {
+  const key = normalizeToolTokenKey(token);
+  return EXECUTION_TOOL_ALIASES[key] ?? key;
 }
 
 export function hasUserInteractionTool(suggestedTools?: string[] | null): boolean {
@@ -199,7 +212,7 @@ export function normalizeSuggestedToolsOrThrow(params: {
     if (!trimmed) continue;
 
     const interaction = toCanonicalInteractionToolToken(trimmed);
-    const key = normalizeToolTokenKey(trimmed);
+    const key = toCanonicalExecutionToolKey(trimmed);
     const canonical = interaction ?? allowedByKey.get(key) ?? defaultByKey.get(key);
 
     if (!canonical) {
