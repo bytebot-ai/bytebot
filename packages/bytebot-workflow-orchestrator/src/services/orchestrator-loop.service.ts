@@ -611,10 +611,10 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
               }
             }
 
-            // Heartbeat retries exhausted - escalate to REPLAN
-            // This now only happens after 5 heartbeat timeouts, not on first occurrence
+            // Heartbeat retries exhausted - pause safely (no replan churn).
+            // Heartbeat gaps are infra/provider degradation, not a strategy/planning error.
             return {
-              action: 'REPLAN',
+              action: 'WAIT_PROVIDER',
               reason: `Heartbeat retries exhausted: ${inProgressItem.description}`,
               itemId: inProgressItem.id,
             };

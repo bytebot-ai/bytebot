@@ -91,7 +91,7 @@ export interface FailureClassification {
   type: FailureType;
   isRetryable: boolean;
   isReplannable: boolean;
-  suggestedAction: 'RETRY' | 'REPLAN' | 'FAIL';
+  suggestedAction: 'RETRY' | 'REPLAN' | 'FAIL' | 'WAIT_PROVIDER';
   reasoning: string;
   diagnosticInfo: DiagnosticInfo;
 }
@@ -327,7 +327,7 @@ export class FailureClassificationService {
 
     const isRetryable = budget.currentRetries < budget.maxRetries;
 
-    let suggestedAction: 'RETRY' | 'REPLAN' | 'FAIL';
+    let suggestedAction: 'RETRY' | 'REPLAN' | 'FAIL' | 'WAIT_PROVIDER';
     let reasoning: string;
 
     if (isRetryable) {
@@ -335,10 +335,12 @@ export class FailureClassificationService {
       reasoning = `Heartbeat timeout: retry ${budget.currentRetries + 1}/${budget.maxRetries} ` +
         `(agent may recover)`;
     } else {
-      // Exhausted heartbeat retries - escalate to replan
-      suggestedAction = 'REPLAN';
-      reasoning = `Heartbeat retries exhausted (${budget.maxRetries}): agent not responding, ` +
-        `escalating to replan`;
+      // Exhausted heartbeat retries - pause safely.
+      // Heartbeat gaps are almost always infra/provider degradation (agent can't reach proxy/model),
+      // and replanning here creates churn + consumes replan budget without fixing the root cause.
+      suggestedAction = 'WAIT_PROVIDER';
+      reasoning = `Heartbeat retries exhausted (${budget.maxRetries}): agent not responding; ` +
+        `pausing in WAITING_PROVIDER for recovery`;
     }
 
     const classification: FailureClassification = {
