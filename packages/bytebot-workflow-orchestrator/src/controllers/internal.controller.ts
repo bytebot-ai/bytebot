@@ -47,6 +47,7 @@ import { GoalIntakeService } from '../services/goal-intake.service';
 import { detectPlannerFirstStepUserInputReason, PlannerFirstStepUserInputError } from '../services/planner.errors';
 import { ExecutionSurface, StepType } from '@prisma/client';
 import { hasDesktopExecutionTool, normalizeSuggestedToolsOrThrow, PlannerOutputContractViolationError } from '../contracts/planner-tools';
+import { inferGoalFeasibility } from '../contracts/goal-feasibility';
 
 // ============================================================================
 // DTOs
@@ -320,12 +321,22 @@ export class InternalController {
         allowedTools: null,
       });
 
+      // Goal context (used for deterministic feasibility gates)
+      const goalRun = await this.prisma.goalRun.findUnique({
+        where: { id: body.goalRunId },
+        select: { goal: true },
+      });
+
+      const goalFeasibility = inferGoalFeasibility(goalRun?.goal);
+      const mustUseDesktopSurface = goalFeasibility?.requiredSurface === ExecutionSurface.DESKTOP;
+
       // Resolve execution surface deterministically (structured signals only; no NL heuristics).
       // Temporal worker v1 StepDto may omit surface fields; use workspace presence as the safest default.
       const inferredRequiresDesktop =
-        typeof body.step.requiresDesktop === 'boolean'
-          ? body.step.requiresDesktop
-          : hasDesktopExecutionTool(normalizedSuggestedTools) || !!body.workspaceId;
+        Boolean(body.step.requiresDesktop) ||
+        hasDesktopExecutionTool(normalizedSuggestedTools) ||
+        !!body.workspaceId ||
+        mustUseDesktopSurface;
 
       let resolvedExecutionSurface =
         body.step.executionSurface ??
@@ -345,11 +356,10 @@ export class InternalController {
 
       const resolvedRequiresDesktop = resolvedExecutionSurface === ExecutionSurface.DESKTOP;
 
-      // Get goal context for richer agent context
-      const goalRun = await this.prisma.goalRun.findUnique({
-        where: { id: body.goalRunId },
-        select: { goal: true },
-      });
+      const allowedToolsForDispatch =
+        mustUseDesktopSurface && !hasDesktopExecutionTool(normalizedSuggestedTools)
+          ? [...normalizedSuggestedTools, 'browser']
+          : normalizedSuggestedTools;
 
       // Build previous step results from context
       const previousStepResults = body.context?.accumulatedKnowledge?.length
@@ -366,7 +376,7 @@ export class InternalController {
         title: body.step.description.slice(0, 100),
         description: body.step.description,
         expectedOutcome: body.step.expectedOutcome,
-        allowedTools: normalizedSuggestedTools,
+        allowedTools: allowedToolsForDispatch,
         requiresDesktop: resolvedRequiresDesktop,
         executionSurface: resolvedExecutionSurface,
         // Context for autonomous operation

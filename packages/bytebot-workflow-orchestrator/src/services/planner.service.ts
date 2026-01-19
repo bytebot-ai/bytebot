@@ -51,6 +51,7 @@ import {
   hasUserInteractionTool,
   normalizeSuggestedToolsOrThrow,
 } from '../contracts/planner-tools';
+import { inferGoalFeasibility } from '../contracts/goal-feasibility';
 
 // Zod schema for LLM plan output validation
 const ChecklistItemSchema = z.object({
@@ -778,6 +779,9 @@ export class PlannerService {
     const items = Array.isArray(planOutput.items) ? [...planOutput.items] : [];
     if (items.length === 0) return planOutput;
 
+    const goalFeasibility = inferGoalFeasibility(context.goal);
+    const forceDesktopSurface = goalFeasibility?.requiredSurface === ExecutionSurface.DESKTOP;
+
     const normalizedItems = items.slice(0, maxItems).map((item) => {
       const suggestedTools = normalizeSuggestedToolsOrThrow({
         suggestedTools: item.suggestedTools,
@@ -794,6 +798,18 @@ export class PlannerService {
 
       const requiresDesktop =
         Boolean(item.requiresDesktop) || hasDesktopExecutionTool(suggestedTools);
+
+      if (forceDesktopSurface && item.type === StepType.EXECUTE) {
+        const ensuredTools = hasDesktopExecutionTool(suggestedTools)
+          ? suggestedTools
+          : [...suggestedTools, 'browser'];
+
+        return {
+          ...item,
+          suggestedTools: ensuredTools,
+          requiresDesktop: true,
+        };
+      }
 
       return { ...item, suggestedTools, requiresDesktop };
     });

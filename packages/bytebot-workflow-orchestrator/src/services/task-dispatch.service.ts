@@ -39,6 +39,8 @@ import {
 } from '@prisma/client';
 import { UserPromptService } from './user-prompt.service';
 import { OutboxService } from './outbox.service';
+import { inferGoalFeasibility } from '../contracts/goal-feasibility';
+import { hasDesktopExecutionTool } from '../contracts/planner-tools';
 
 // Phase 12: Task-based model routing configuration
 // Phase 14.1: Updated browser model from fara-7b to gpt-oss-120b (2026-01-07)
@@ -356,6 +358,40 @@ export class TaskDispatchService implements OnModuleInit {
       return { success: false, error: 'Task dispatch disabled' };
     }
 
+    // Feasibility gate (defense-in-depth): certain goals (e.g., travel-shopping) must not dispatch as TEXT_ONLY.
+    // This prevents runs from stalling due to planner/tool drift (missing browser tools).
+    const goalFeasibility = inferGoalFeasibility(request.goalContext);
+    const mustUseDesktopSurface = goalFeasibility?.requiredSurface === ExecutionSurface.DESKTOP;
+    const requestedSurface =
+      request.executionSurface ??
+      ((request.requiresDesktop ?? false) ? ExecutionSurface.DESKTOP : ExecutionSurface.TEXT_ONLY);
+
+    const effectiveAllowedTools = Array.isArray(request.allowedTools) ? [...request.allowedTools] : [];
+
+    let effectiveRequiresDesktop = request.requiresDesktop ?? false;
+    let effectiveExecutionSurface = requestedSurface;
+
+    if (mustUseDesktopSurface) {
+      const needsBrowserHint = !hasDesktopExecutionTool(effectiveAllowedTools);
+      if (needsBrowserHint) {
+        effectiveAllowedTools.push('browser');
+      }
+
+      if (!effectiveRequiresDesktop || effectiveExecutionSurface === ExecutionSurface.TEXT_ONLY) {
+        this.logger.warn({
+          message: 'Feasibility auto-upgrade: goal requires DESKTOP (travel-shopping)',
+          goalRunId: request.goalRunId,
+          checklistItemId: request.checklistItemId,
+          previousRequiresDesktop: effectiveRequiresDesktop,
+          previousExecutionSurface: effectiveExecutionSurface,
+          reason: goalFeasibility?.reason,
+        });
+      }
+
+      effectiveRequiresDesktop = true;
+      effectiveExecutionSurface = ExecutionSurface.DESKTOP;
+    }
+
     const attempt = request.attempt || 1;
     const idempotencyKey = this.generateIdempotencyKey(
       request.goalRunId,
@@ -371,11 +407,11 @@ export class TaskDispatchService implements OnModuleInit {
     }
 
     // Phase 12: Select model based on execution surface
-    const selectedModel = this.selectModelForTask(request.requiresDesktop);
+    const selectedModel = this.selectModelForTask(effectiveRequiresDesktop);
 
       this.logger.log(
       `Dispatching task for checklist item ${request.checklistItemId} ` +
-      `(attempt ${attempt}, model: ${selectedModel.title}, requiresDesktop: ${request.requiresDesktop}, surface: ${request.executionSurface})`,
+      `(attempt ${attempt}, model: ${selectedModel.title}, requiresDesktop: ${effectiveRequiresDesktop}, surface: ${effectiveExecutionSurface})`,
     );
 
     try {
@@ -396,15 +432,13 @@ export class TaskDispatchService implements OnModuleInit {
         // Map checklistItemId to nodeRunId for agent tracking
         nodeRunId: request.checklistItemId,
         // Tool configuration
-        allowedTools: request.allowedTools || [],
+        allowedTools: effectiveAllowedTools,
         highRiskTools: request.highRiskTools || [],
         gatewayToolsOnly: false,
         // Phase 4: Execution surface constraints - forward desktop requirement
-        requiresDesktop: request.requiresDesktop ?? false,
+        requiresDesktop: effectiveRequiresDesktop,
         // PR5: ExecutionSurface propagation (end-to-end)
-        executionSurface:
-          request.executionSurface ??
-          ((request.requiresDesktop ?? false) ? ExecutionSurface.DESKTOP : ExecutionSurface.TEXT_ONLY),
+        executionSurface: effectiveExecutionSurface,
         // v2.4.0: Context propagation for autonomous operation
         // Provides goal context and previous step results to help agent proceed without asking
         goalContext: request.goalContext,
@@ -1828,10 +1862,14 @@ export class TaskDispatchService implements OnModuleInit {
 
     // Get workspace ID from goal run
     const goalRun = item.planVersion.goalRun;
-    const workspaceId = (goalRun as any).workspaceId || undefined;
+    const workflowRun = await this.prisma.workflowRun.findUnique({
+      where: { id: payload.workflowRunId },
+      select: { workspaceId: true },
+    });
+    const workspaceId = workflowRun?.workspaceId ?? undefined;
 
     // v2.4.0: Get goal context and previous step results for autonomous operation
-    const goalContext = (goalRun as any).goal as string;
+    const goalContext = goalRun.goal as string;
 
     // Get completed previous steps from the same plan version
     const completedItems = await this.prisma.checklistItem.findMany({

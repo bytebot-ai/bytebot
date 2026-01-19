@@ -64,5 +64,41 @@ describe('PlannerService desktop surface feasibility gate', () => {
     const output = await (service as any).callLLMForPlan('Parse doc', {});
     expect(output.items[0].requiresDesktop).toBe(false);
   });
-});
 
+  it('forces DESKTOP feasibility for travel-shopping goals even when planner omits tools', async () => {
+    const service = makeService();
+
+    jest.spyOn(service as any, 'callLLM').mockResolvedValueOnce(
+      JSON.stringify({
+        summary: 'test',
+        items: [
+          {
+            description: 'Search for round-trip flights from DTW to LAS for Feb 21-28',
+            type: StepType.EXECUTE,
+            expectedOutcome: 'Top flight options collected',
+            suggestedTools: [],
+            requiresDesktop: false,
+          },
+          {
+            description: 'Search for hotels in Las Vegas for the same dates',
+            type: StepType.EXECUTE,
+            expectedOutcome: 'Top hotel options collected',
+            suggestedTools: [],
+            requiresDesktop: false,
+          },
+        ],
+        confidence: 0.9,
+      }),
+    );
+
+    const output = await (service as any).callLLMForPlan(
+      'Please price a trip with flight and hotel from Detroit to Las Vegas Feb 21-28',
+      {},
+    );
+
+    expect(output.items[0].requiresDesktop).toBe(true);
+    expect(output.items[0].suggestedTools).toContain('browser');
+    expect(output.items[1].requiresDesktop).toBe(true);
+    expect(output.items[1].suggestedTools).toContain('browser');
+  });
+});
