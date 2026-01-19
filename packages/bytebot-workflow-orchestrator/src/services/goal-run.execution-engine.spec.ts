@@ -233,4 +233,102 @@ describe('GoalRunService execution_engine (immutable per-run engine)', () => {
     );
     expect(eventEmitter.emit).not.toHaveBeenCalledWith('goal-run.started', expect.anything());
   });
+
+  it('startGoalRun provisions a workspace anchor for DESKTOP-required Temporal goals', async () => {
+    const prisma = {
+      goalRun: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+      },
+      activityEvent: {
+        create: jest.fn(),
+      },
+    } as any;
+
+    const workflowService = {
+      getOrCreateGoalRunWorkspace: jest.fn().mockResolvedValue({
+        workflowRunId: 'wf-gr-1',
+        workspaceId: 'ws-gr-1',
+        created: true,
+      }),
+    } as any;
+
+    const eventEmitter = { emit: jest.fn() } as any;
+    const temporalWorkflowService = {
+      isEnabled: jest.fn().mockReturnValue(true),
+      startGoalRunWorkflow: jest.fn().mockResolvedValue({ workflowId: 'twf-1', runId: 'tr-1' }),
+    } as any;
+    const featureFlagService = { shouldUseTemporalWorkflow: jest.fn() } as any;
+
+    prisma.goalRun.findUnique.mockResolvedValueOnce({
+      id: 'gr-1',
+      tenantId: 't-1',
+      goal: 'Find flights from DTW to DEN next week',
+      executionEngine: GoalRunExecutionEngine.TEMPORAL_WORKFLOW,
+      workflowRunId: null,
+      temporalStartedAt: null,
+      temporalRunId: null,
+      temporalWorkflowId: null,
+    });
+
+    prisma.goalRun.update.mockResolvedValueOnce({
+      id: 'gr-1',
+      tenantId: 't-1',
+      goal: 'Find flights from DTW to DEN next week',
+      constraints: {},
+      phase: GoalRunPhase.INITIALIZING,
+      status: GoalRunStatus.RUNNING,
+      executionEngine: GoalRunExecutionEngine.TEMPORAL_WORKFLOW,
+      workflowRunId: null,
+      currentPlanVersion: 0,
+      error: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      startedAt: new Date(),
+      completedAt: null,
+    });
+
+    prisma.goalRun.updateMany
+      .mockResolvedValueOnce({ count: 1 }) // workflowRunId link
+      .mockResolvedValueOnce({ count: 1 }); // temporal identifiers
+
+    const service = new GoalRunService(
+      prisma,
+      workflowService,
+      eventEmitter,
+      temporalWorkflowService,
+      featureFlagService,
+    );
+
+    await service.startGoalRun('gr-1');
+
+    expect(workflowService.getOrCreateGoalRunWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ goalRunId: 'gr-1', tenantId: 't-1' }),
+    );
+
+    expect(prisma.goalRun.updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'gr-1', workflowRunId: null }),
+        data: expect.objectContaining({ workflowRunId: 'wf-gr-1' }),
+      }),
+    );
+
+    expect(temporalWorkflowService.startGoalRunWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        goalRunId: 'gr-1',
+        tenantId: 't-1',
+        workspaceId: 'ws-gr-1',
+      }),
+    );
+
+    expect(prisma.goalRun.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'gr-1' }),
+        data: expect.objectContaining({ temporalWorkflowId: 'twf-1', temporalRunId: 'tr-1' }),
+      }),
+    );
+  });
 });

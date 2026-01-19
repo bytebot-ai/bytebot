@@ -35,6 +35,7 @@ import { TemporalWorkflowService } from '../temporal/temporal-workflow.service';
 import { FeatureFlagService } from '../temporal/feature-flag.service';
 import { hasUserInteractionTool } from '../contracts/planner-tools';
 import { TemporalCapabilityProbeService } from '../temporal/temporal-capability-probe.service';
+import { inferGoalFeasibility } from '../contracts/goal-feasibility';
 
 // Re-export enums for convenience
 export { GoalRunPhase, GoalRunStatus, ChecklistItemStatus };
@@ -390,81 +391,118 @@ export class GoalRunService {
 
     // Start Temporal workflow if engine is pinned to TEMPORAL_WORKFLOW
     if (executionEngine === GoalRunExecutionEngine.TEMPORAL_WORKFLOW && this.temporalWorkflowService) {
+      // Temporal runs can still dispatch DESKTOP tasks via the agent stack.
+      // For DESKTOP-required goals we must anchor a Workspace + WorkflowRun so tasks have a stable workspaceId.
+      const goalFeasibility = inferGoalFeasibility(existingGoalRun.goal);
+      const mustUseDesktopWorkspace = goalFeasibility?.requiredSurface === ExecutionSurface.DESKTOP;
+
+      let temporalWorkspaceId: string | undefined;
+
+      if (existingGoalRun.workflowRunId) {
+        // If a workspace anchor already exists, reuse it.
+        (goalRun as any).workflowRunId = existingGoalRun.workflowRunId;
+        try {
+          const workflowRun = await this.prisma.workflowRun.findUnique({
+            where: { id: existingGoalRun.workflowRunId },
+            select: { workspaceId: true },
+          });
+          temporalWorkspaceId = workflowRun?.workspaceId ?? undefined;
+        } catch {
+          temporalWorkspaceId = undefined;
+        }
+      } else if (mustUseDesktopWorkspace) {
+        const workspaceAnchor = await this.workflowService.getOrCreateGoalRunWorkspace({
+          goalRunId,
+          tenantId: existingGoalRun.tenantId,
+        });
+
+        temporalWorkspaceId = workspaceAnchor.workspaceId;
+
+        const linked = await this.prisma.goalRun.updateMany({
+          where: { id: goalRunId, workflowRunId: null },
+          data: { workflowRunId: workspaceAnchor.workflowRunId },
+        });
+
+        if (linked.count > 0) {
+          (goalRun as any).workflowRunId = workspaceAnchor.workflowRunId;
+        } else if (existingGoalRun.workflowRunId) {
+          (goalRun as any).workflowRunId = existingGoalRun.workflowRunId;
+        }
+      }
+
       // Idempotency: if we already recorded Temporal workflow identifiers, do not start a second workflow.
       if (existingGoalRun.temporalStartedAt || existingGoalRun.temporalRunId) {
         this.logger.log(
           `Temporal workflow already started for ${goalRunId}: ${existingGoalRun.temporalWorkflowId ?? this.temporalWorkflowService.getWorkflowId(goalRunId)} (run: ${existingGoalRun.temporalRunId ?? 'unknown'})`,
         );
       } else {
-      try {
-        const constraints = goalRun.constraints as GoalConstraints;
-        const { workflowId, runId } = await this.temporalWorkflowService.startGoalRunWorkflow({
-          goalRunId,
-          tenantId: goalRun.tenantId,
-          userId: 'system', // TODO: Pass actual user ID from context
-          goalDescription: goalRun.goal,
-          constraints: {
-            maxSteps: 50,
-            maxRetries: 3,
-            maxReplans: 5,
-            timeoutMs: constraints?.deadlineMinutes ? constraints.deadlineMinutes * 60 * 1000 : 3600000,
-            requireApprovalForHighRisk: constraints?.riskPolicy?.requireApproval?.length ? true : false,
-          },
-        });
+        try {
+          const constraints = goalRun.constraints as GoalConstraints;
+          const { workflowId, runId } = await this.temporalWorkflowService.startGoalRunWorkflow({
+            goalRunId,
+            tenantId: goalRun.tenantId,
+            userId: 'system', // TODO: Pass actual user ID from context
+            goalDescription: goalRun.goal,
+            workspaceId: temporalWorkspaceId,
+            constraints: {
+              maxSteps: 50,
+              maxRetries: 3,
+              maxReplans: 5,
+              timeoutMs: constraints?.deadlineMinutes ? constraints.deadlineMinutes * 60 * 1000 : 3600000,
+              requireApprovalForHighRisk: constraints?.riskPolicy?.requireApproval?.length ? true : false,
+            },
+          });
 
-        this.logger.log(`Temporal workflow started: ${workflowId} (run: ${runId})`);
+          this.logger.log(`Temporal workflow started: ${workflowId} (run: ${runId})`);
 
-        // Persist Temporal identifiers for audit/debug (write-once semantics).
-        const temporalStartedAt = new Date();
-        await this.prisma.goalRun.updateMany({
-          where: {
-            id: goalRunId,
-            temporalRunId: null,
-          },
-          data: {
-            temporalWorkflowId: workflowId,
-            temporalRunId: runId,
-            temporalStartedAt,
-          },
-        });
+          // Persist Temporal identifiers for audit/debug (write-once semantics).
+          const temporalStartedAt = new Date();
+          await this.prisma.goalRun.updateMany({
+            where: {
+              id: goalRunId,
+              temporalRunId: null,
+            },
+            data: {
+              temporalWorkflowId: workflowId,
+              temporalRunId: runId,
+              temporalStartedAt,
+            },
+          });
 
-        (goalRun as any).temporalWorkflowId = workflowId;
-        (goalRun as any).temporalRunId = runId;
-        (goalRun as any).temporalStartedAt = temporalStartedAt;
+          (goalRun as any).temporalWorkflowId = workflowId;
+          (goalRun as any).temporalRunId = runId;
+          (goalRun as any).temporalStartedAt = temporalStartedAt;
 
-        // Note: Do NOT set workflowRunId here. That field references the legacy
-        // workflow_runs table (FK constraint), but Temporal workflows don't create
-        // WorkflowRun records. The Temporal workflow can be queried by workflowId
-        // which contains the goalRunId (format: goal-run-{goalRunId}).
-        // Phase 9.2b fix: Removed workflowRunId update that caused FK violation.
+          // Note: workflowRunId (if present) is an orchestrator-owned workspace anchor.
+          // Temporal workflows themselves are tracked via temporalWorkflowId/temporalRunId.
 
-        await this.createActivityEvent(goalRunId, {
-          eventType: 'TEMPORAL_WORKFLOW_STARTED',
-          title: 'Temporal workflow started',
-          description: `Workflow ID: ${workflowId}`,
-          details: { workflowId, runId },
-        });
-      } catch (error: any) {
-        this.logger.error(`Failed to start Temporal workflow for ${goalRunId}: ${error.message}`);
-        // Do not silently change engines; make the failure explicit and fail closed.
-        await this.createActivityEvent(goalRunId, {
-          eventType: 'TEMPORAL_WORKFLOW_START_FAILED',
-          title: 'Temporal workflow failed to start',
-          description: error.message,
-          severity: 'error',
-        });
+          await this.createActivityEvent(goalRunId, {
+            eventType: 'TEMPORAL_WORKFLOW_STARTED',
+            title: 'Temporal workflow started',
+            description: `Workflow ID: ${workflowId}`,
+            details: { workflowId, runId },
+          });
+        } catch (error: any) {
+          this.logger.error(`Failed to start Temporal workflow for ${goalRunId}: ${error.message}`);
+          // Do not silently change engines; make the failure explicit and fail closed.
+          await this.createActivityEvent(goalRunId, {
+            eventType: 'TEMPORAL_WORKFLOW_START_FAILED',
+            title: 'Temporal workflow failed to start',
+            description: error.message,
+            severity: 'error',
+          });
 
-        const failed = await this.prisma.goalRun.update({
-          where: { id: goalRunId },
-          data: {
-            status: GoalRunStatus.FAILED,
-            phase: GoalRunPhase.FAILED,
-            error: `Temporal workflow start failed: ${error.message}`,
-          },
-        });
+          const failed = await this.prisma.goalRun.update({
+            where: { id: goalRunId },
+            data: {
+              status: GoalRunStatus.FAILED,
+              phase: GoalRunPhase.FAILED,
+              error: `Temporal workflow start failed: ${error.message}`,
+            },
+          });
 
-        return this.toGoalRunResponse(failed);
-      }
+          return this.toGoalRunResponse(failed);
+        }
       }
     }
 
@@ -703,22 +741,21 @@ export class GoalRunService {
       this.logger.log(`Cancelled ${cancelledPrompts.count} OPEN user prompt(s) for goal run ${goalRunId}`);
     }
 
-    // Cancel Temporal workflow if active (preferred path)
-    if (goalRun.workflowRunId && this.temporalWorkflowService?.isEnabled()) {
+    const executionEngine =
+      goalRun.executionEngine ?? GoalRunExecutionEngine.LEGACY_DB_LOOP;
+
+    // Cancel Temporal workflow if active (preferred path for TEMPORAL_WORKFLOW runs).
+    if (executionEngine === GoalRunExecutionEngine.TEMPORAL_WORKFLOW && this.temporalWorkflowService?.isEnabled()) {
       try {
         await this.temporalWorkflowService.cancelWorkflow(goalRunId, reason || 'Cancelled by user');
         this.logger.log(`Sent cancel signal to Temporal workflow for ${goalRunId}`);
       } catch (error: any) {
         this.logger.warn(`Failed to send cancel signal to Temporal: ${error.message}`);
-        // Try legacy workflow cancellation as fallback
-        try {
-          await this.workflowService.cancelWorkflow(goalRun.workflowRunId, reason);
-        } catch (legacyError: any) {
-          this.logger.warn(`Failed to cancel legacy workflow: ${legacyError.message}`);
-        }
       }
-    } else if (goalRun.workflowRunId) {
-      // Legacy workflow cancellation
+    }
+
+    // Cancel linked workspace/workflow anchor (applies to legacy and Temporal runs when present).
+    if (goalRun.workflowRunId) {
       try {
         await this.workflowService.cancelWorkflow(goalRun.workflowRunId, reason);
       } catch (error: any) {

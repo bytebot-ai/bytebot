@@ -154,7 +154,7 @@ export class WorkflowService {
           lockedBy: null,
           lockedAt: null,
           persistenceEnabled: input.persistence?.enabled ?? true,
-          storageClass: input.persistence?.storageClass || 'longhorn',
+          storageClass: input.persistence?.storageClass ?? null,
           storageSize: input.persistence?.size || '10Gi',
           // v1.1.0: Provisioning tracking fields
           provisioningAttemptCount: 0,
@@ -213,6 +213,89 @@ export class WorkflowService {
       nodes: result.nodes,
       createdAt: result.workflowRun.createdAt,
     };
+  }
+
+  /**
+   * vNext (Temporal parity): Ensure a WorkflowRun + Workspace exist for a GoalRun.
+   *
+   * Why: TEMPORAL_WORKFLOW runs still dispatch tasks via the orchestrator/agent stack, and
+   * desktop tasks require a stable `workspaceId`. We create a minimal WorkflowRun record
+   * (no nodes) that exists solely to anchor the workspace lifecycle.
+   *
+   * Design:
+   * - Deterministic IDs: workflowRunId = wf-{goalRunId}, workspaceId = ws-{goalRunId}
+   * - Idempotent via upsert in a single DB transaction (no orphans under concurrency)
+   */
+  async getOrCreateGoalRunWorkspace(params: {
+    goalRunId: string;
+    tenantId: string;
+    persistence?: { enabled?: boolean; storageClass?: string | null; size?: string | null };
+  }): Promise<{ workflowRunId: string; workspaceId: string; created: boolean }> {
+    const workflowRunId = `wf-${params.goalRunId}`;
+    const expectedWorkspaceId = `ws-${params.goalRunId}`;
+
+    const existing = await this.prisma.workflowRun.findUnique({
+      where: { id: workflowRunId },
+      select: { id: true, workspaceId: true, tenantId: true },
+    });
+
+    if (existing) {
+      if (existing.tenantId !== params.tenantId) {
+        throw new Error(
+          `WorkflowRun ${workflowRunId} belongs to tenant ${existing.tenantId}, not ${params.tenantId}`,
+        );
+      }
+      return { workflowRunId: existing.id, workspaceId: existing.workspaceId, created: false };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.workspace.upsert({
+        where: { id: expectedWorkspaceId },
+        create: {
+          id: expectedWorkspaceId,
+          tenantId: params.tenantId,
+          status: WorkspaceProvisioningStatus.PENDING,
+          lockedBy: null,
+          lockedAt: null,
+          persistenceEnabled: params.persistence?.enabled ?? true,
+          storageClass: params.persistence?.storageClass ?? null,
+          storageSize: params.persistence?.size ?? '10Gi',
+          provisioningAttemptCount: 0,
+          lastProvisioningAttemptAt: null,
+        },
+        update: {},
+      });
+
+      await tx.workflowRun.upsert({
+        where: { id: workflowRunId },
+        create: {
+          id: workflowRunId,
+          workspaceId: expectedWorkspaceId,
+          tenantId: params.tenantId,
+          templateId: null,
+          name: `GoalRun ${params.goalRunId}`,
+          description: `Workspace anchor for goal run ${params.goalRunId} (Temporal engine)`,
+          status: WorkflowStatus.PENDING,
+        },
+        update: {},
+      });
+    });
+
+    const createdWorkflow = await this.prisma.workflowRun.findUnique({
+      where: { id: workflowRunId },
+      select: { workspaceId: true, tenantId: true },
+    });
+
+    if (!createdWorkflow) {
+      throw new Error(`Failed to create or fetch WorkflowRun ${workflowRunId}`);
+    }
+    if (createdWorkflow.tenantId !== params.tenantId) {
+      throw new Error(
+        `WorkflowRun ${workflowRunId} belongs to tenant ${createdWorkflow.tenantId}, not ${params.tenantId}`,
+      );
+    }
+
+    return { workflowRunId, workspaceId: createdWorkflow.workspaceId, created: true };
   }
 
   /**
