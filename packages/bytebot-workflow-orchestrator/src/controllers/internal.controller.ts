@@ -436,7 +436,7 @@ export class InternalController {
     @Headers('x-internal-request') internalHeader?: string,
     @Headers('x-tenant-id') tenantId?: string,
   ): Promise<{
-    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_USER_INPUT';
+    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_USER_INPUT' | 'WAITING_PROVIDER';
     output?: {
       summary?: string;
       result?: string;
@@ -479,6 +479,14 @@ export class InternalController {
         'UI_BLOCKED_POPUP',
       ]);
 
+      const providerWaitEligibleNeedsHelpCodes = new Set<string>([
+        // Provider/model/gateway recovery. This must be a stable wait state, not replan churn.
+        'WAITING_PROVIDER',
+        'LLM_PROXY_DOWN',
+        'MODEL_UNAVAILABLE',
+        'LLM_EMPTY_RESPONSE',
+      ]);
+
       const isNeedsHelp = task.status === 'NEEDS_HELP' || task.status === 'NEEDS_REVIEW';
       if (isNeedsHelp) {
         const { errorCode, message } = extractNeedsHelp();
@@ -512,6 +520,19 @@ export class InternalController {
           };
         }
 
+        if (providerWaitEligibleNeedsHelpCodes.has(errorCode)) {
+          return {
+            status: 'WAITING_PROVIDER',
+            output: task.result
+              ? {
+                  summary: message || 'Waiting for provider/model capacity',
+                  result: JSON.stringify(task.result),
+                  artifacts: (task.result as any)?.artifacts,
+                }
+              : undefined,
+          };
+        }
+
         // Default: treat non-allowlisted NEEDS_HELP as an internal failure signal so the workflow can retry/replan.
         return {
           status: 'FAILED',
@@ -520,7 +541,7 @@ export class InternalController {
       }
 
       // Map agent task status to our format
-      const statusMap: Record<string, 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_USER_INPUT'> = {
+      const statusMap: Record<string, 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_USER_INPUT' | 'WAITING_PROVIDER'> = {
         'PENDING': 'PENDING',
         'RUNNING': 'RUNNING',
         'COMPLETED': 'COMPLETED',

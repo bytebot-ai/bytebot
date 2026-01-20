@@ -222,5 +222,20 @@ describe('InternalController planner/dispatch contract gates', () => {
       expect(result.status).toBe('WAITING_USER_INPUT');
       expect(result.output?.summary).toBe('Sign-in required');
     });
+
+    it('returns WAITING_PROVIDER for provider-eligible NEEDS_HELP codes', async () => {
+      const getTaskStatus = jest.fn().mockResolvedValue({
+        status: 'NEEDS_HELP',
+        result: { errorCode: 'LLM_PROXY_DOWN', message: 'LiteLLM proxy is unreachable' },
+        error: null,
+      });
+
+      const controller = makeController({ getTaskStatus });
+
+      const result = await controller.getTaskStatus('task1', 'true', 't1');
+
+      expect(result.status).toBe('WAITING_PROVIDER');
+      expect(result.output?.summary).toBe('LiteLLM proxy is unreachable');
+    });
   });
 });

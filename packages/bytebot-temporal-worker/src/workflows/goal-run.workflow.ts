@@ -202,6 +202,10 @@ interface WorkflowState {
   isWaitingUserInput: boolean;
   waitingUserInputForStep: number | null;
   waitingUserInputReason: 'GOAL_INTAKE' | 'STEP_INPUT' | null;
+  isWaitingProvider: boolean;
+  waitingProviderForStep: number | null;
+  waitingProviderReason: string | null;
+  providerWaitCount: number;
   lastUserPromptId: string | null;
   pendingUserPrompts: Array<{ promptId: string; answers: Record<string, any> }>;
   accumulatedKnowledge: string[];
@@ -242,6 +246,10 @@ export async function goalRunWorkflow(input: GoalRunInput): Promise<GoalRunResul
     isWaitingUserInput: false,
     waitingUserInputForStep: null,
     waitingUserInputReason: null,
+    isWaitingProvider: false,
+    waitingProviderForStep: null,
+    waitingProviderReason: null,
+    providerWaitCount: 0,
     lastUserPromptId: null,
     pendingUserPrompts: [],
     accumulatedKnowledge: input.context?.inheritedKnowledge ?? [],
@@ -327,6 +335,7 @@ export async function goalRunWorkflow(input: GoalRunInput): Promise<GoalRunResul
     isPaused: state.isPaused,
     isAwaitingApproval: state.isAwaitingApproval,
     isWaitingUserInput: state.isWaitingUserInput || state.phase === ('WAITING_USER_INPUT' as GoalRunPhase),
+    isWaitingProvider: state.isWaitingProvider || state.phase === ('WAITING_PROVIDER' as GoalRunPhase),
   }));
 
   setHandler(getCurrentStepQuery, (): Step | null => {
@@ -680,6 +689,39 @@ export async function goalRunWorkflow(input: GoalRunInput): Promise<GoalRunResul
         continue;
       }
 
+      // Durable WAIT for provider/model capacity (Stark Fix: no retry storms)
+      if (state.phase === ('WAITING_PROVIDER' as GoalRunPhase)) {
+        state.isWaitingProvider = true;
+        state.lastUpdatedAt = new Date().toISOString();
+
+        if (patched(WORKFLOW_PATCHES.V1_1_SEARCH_ATTRIBUTES)) {
+          upsertSearchAttributes(createPhaseUpdate('WAITING_PROVIDER'));
+        }
+
+        const attempt = Math.max(0, state.providerWaitCount);
+        const delayMs = Math.min(10 * 60_000, 30_000 * Math.pow(2, Math.min(attempt, 5)));
+
+        // Wait for either pause/cancel or backoff expiry.
+        await condition(() => state.isCancelled || state.isPaused, `${delayMs}ms`);
+
+        if (state.isCancelled || state.isPaused) {
+          continue;
+        }
+
+        state.providerWaitCount = Math.min(state.providerWaitCount + 1, 10);
+        state.isWaitingProvider = false;
+        state.waitingProviderForStep = null;
+        state.waitingProviderReason = null;
+        state.phase = 'EXECUTING' as GoalRunPhase;
+        state.lastUpdatedAt = new Date().toISOString();
+
+        if (patched(WORKFLOW_PATCHES.V1_1_SEARCH_ATTRIBUTES)) {
+          upsertSearchAttributes(createPhaseUpdate('EXECUTING'));
+        }
+
+        continue;
+      }
+
       // Check cancellation
       if (state.isCancelled) {
         break;
@@ -847,6 +889,10 @@ export async function goalRunWorkflow(input: GoalRunInput): Promise<GoalRunResul
 
             // Add knowledge gained
             state.accumulatedKnowledge.push(...executeResult.knowledgeGained);
+            state.providerWaitCount = 0;
+            state.isWaitingProvider = false;
+            state.waitingProviderForStep = null;
+            state.waitingProviderReason = null;
 
             await kafkaActivities.emitStepEvent({
               eventType: 'STEP_COMPLETED',
@@ -904,6 +950,31 @@ export async function goalRunWorkflow(input: GoalRunInput): Promise<GoalRunResul
               await sleep(`${Math.min(30000, 1000 * Math.pow(2, currentResult.retryCount))}ms`);
             }
           } else {
+            if (executeResult.waitingForProvider) {
+              currentResult.status = 'PENDING';
+              currentResult.error = 'WAITING_PROVIDER';
+
+              state.isWaitingProvider = true;
+              state.waitingProviderForStep = currentStep.stepNumber;
+              state.waitingProviderReason = executeResult.error ?? executeResult.outcome ?? 'WAITING_PROVIDER';
+              state.phase = 'WAITING_PROVIDER' as GoalRunPhase;
+              state.lastUpdatedAt = new Date().toISOString();
+
+              await kafkaActivities.emitAuditEvent({
+                eventType: 'goal.waiting_provider',
+                goalRunId: input.goalRunId,
+                tenantId: input.tenantId,
+                action: 'WAITING_PROVIDER',
+                details: {
+                  stepNumber: currentStep.stepNumber,
+                  reason: state.waitingProviderReason,
+                  providerWaitCount: state.providerWaitCount,
+                },
+              }).catch(() => {});
+
+              continue;
+            }
+
             if (executeResult.waitingForUserInput || executeResult.needsApproval) {
               // Stark Fix (Atom 6): Treat "needs help" as a durable WAIT state, not a failure/retry loop.
               currentResult.status = 'PENDING';

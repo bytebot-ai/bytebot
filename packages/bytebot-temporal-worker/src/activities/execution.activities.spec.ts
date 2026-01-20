@@ -122,6 +122,27 @@ describe('Execution Activities', () => {
       expect(result.waitingForUserInput).toBe(true);
     });
 
+    it('should handle WAITING_PROVIDER status', async () => {
+      jest.useRealTimers();
+
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { success: true, taskId: 'task-123', status: 'DISPATCHED' },
+      });
+
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          status: 'WAITING_PROVIDER',
+          output: { summary: 'Waiting for provider/model capacity' },
+        },
+      });
+
+      const result = await mockActivityEnv.run(executeStep, defaultInput) as ExecuteStepOutput;
+
+      expect(result.success).toBe(false);
+      expect(result.waitingForProvider).toBe(true);
+      expect(result.waitingForUserInput).toBe(false);
+    });
+
     it('should handle failed task execution', async () => {
       jest.useRealTimers();
 
@@ -213,6 +234,7 @@ describe('Execution Activities', () => {
         knowledgeGained: [],
         needsApproval: false,
         waitingForUserInput: false,
+        waitingForProvider: false,
       },
     };
 

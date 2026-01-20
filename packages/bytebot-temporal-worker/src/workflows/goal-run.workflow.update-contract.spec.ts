@@ -77,6 +77,7 @@ describe('GoalRunWorkflow Update contract', () => {
         knowledgeGained: [],
         needsApproval: false,
         waitingForUserInput: false,
+        waitingForProvider: false,
       }),
       verifyStep: async () => ({
         verified: true,
@@ -132,6 +133,104 @@ describe('GoalRunWorkflow Update contract', () => {
       const result = await handle.result();
       expect(result.status).toBe('COMPLETED');
       expect(planCalls).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('enters WAITING_PROVIDER and resumes execution after backoff (no retry storm)', async () => {
+    const taskQueue = `tq-${Math.random().toString(16).slice(2)}`;
+
+    let executeCalls = 0;
+
+    const activities = {
+      planGoal: async (): Promise<PlanGoalOutput> => ({
+        kind: 'PLAN',
+        steps: [
+          {
+            stepNumber: 1,
+            description: 'Perform a desktop action that depends on provider capacity',
+            expectedOutcome: 'Step completes successfully',
+            isHighRisk: false,
+            dependencies: [],
+            estimatedDurationMs: 1000,
+          },
+        ],
+        planSummary: 'Single step plan',
+        confidence: 0.9,
+      }),
+      executeStep: async () => {
+        executeCalls += 1;
+        if (executeCalls === 1) {
+          return {
+            success: false,
+            outcome: 'Waiting for provider/model capacity',
+            artifacts: [],
+            knowledgeGained: [],
+            needsApproval: false,
+            waitingForUserInput: false,
+            waitingForProvider: true,
+            error: 'LiteLLM proxy is unreachable',
+          };
+        }
+        return {
+          success: true,
+          outcome: 'ok',
+          artifacts: [],
+          knowledgeGained: [],
+          needsApproval: false,
+          waitingForUserInput: false,
+          waitingForProvider: false,
+        };
+      },
+      verifyStep: async () => ({
+        verified: true,
+        verificationDetails: 'ok',
+        suggestReplan: false,
+      }),
+      classifyFailure: async () => ({
+        category: 'TRANSIENT' as const,
+        retryable: true,
+        suggestedAction: 'RETRY' as const,
+      }),
+      emitGoalEvent: async () => {},
+      emitStepEvent: async () => {},
+      emitAuditEvent: async () => {},
+    };
+
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: require.resolve('./goal-run.workflow'),
+      activities,
+    });
+
+    await worker.runUntil(async () => {
+      const workflowId = `provider-wait-${Math.random().toString(16).slice(2)}`;
+
+      const handle = await env.client.workflow.start('goalRunWorkflow', {
+        taskQueue,
+        workflowId,
+        args: [
+          {
+            goalRunId: 'gr-provider-wait-1',
+            tenantId: 't-1',
+            userId: 'u-1',
+            goalDescription: 'Test provider wait state',
+          },
+        ],
+      });
+
+      await env.sleep('1s');
+
+      const progress = await handle.query<any>('getProgress');
+      expect(progress.phase).toBe('WAITING_PROVIDER');
+      expect(progress.isWaitingProvider).toBe(true);
+
+      // Base backoff is 30s; time-skipping env will fast-forward timers.
+      await env.sleep('31s');
+
+      const result = await handle.result();
+      expect(result.status).toBe('COMPLETED');
+      expect(executeCalls).toBeGreaterThanOrEqual(2);
     });
   });
 

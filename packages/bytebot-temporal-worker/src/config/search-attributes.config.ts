@@ -104,6 +104,7 @@ export type ByteBotPhaseAttribute =
   | 'PLANNING'
   | 'EXECUTING'
   | 'WAITING_USER_INPUT'
+  | 'WAITING_PROVIDER'
   | 'VERIFYING'
   | 'REPLANNING'
   | 'PAUSED'

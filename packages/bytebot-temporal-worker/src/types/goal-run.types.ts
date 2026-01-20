@@ -69,6 +69,7 @@ export enum GoalRunPhase {
   PLANNING = 'PLANNING',
   EXECUTING = 'EXECUTING',
   WAITING_USER_INPUT = 'WAITING_USER_INPUT',
+  WAITING_PROVIDER = 'WAITING_PROVIDER',
   VERIFYING = 'VERIFYING',
   REPLANNING = 'REPLANNING',
   AWAITING_APPROVAL = 'AWAITING_APPROVAL',
@@ -116,6 +117,7 @@ export const GoalProgressSchema = z.object({
   isPaused: z.boolean().default(false),
   isAwaitingApproval: z.boolean().default(false),
   isWaitingUserInput: z.boolean().default(false),
+  isWaitingProvider: z.boolean().default(false),
 });
 
 export type GoalProgress = z.infer<typeof GoalProgressSchema>;
@@ -266,6 +268,7 @@ export const ExecuteStepOutputSchema = z.object({
   knowledgeGained: z.array(z.string()).default([]),
   needsApproval: z.boolean().default(false),
   waitingForUserInput: z.boolean().default(false),
+  waitingForProvider: z.boolean().default(false),
   error: z.string().optional(),
 });
 

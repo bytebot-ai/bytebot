@@ -135,6 +135,7 @@ export async function executeStep(input: ExecuteStepInput): Promise<ExecuteStepO
         knowledgeGained: [],
         needsApproval: false,
         waitingForUserInput: false,
+        waitingForProvider: false,
         error: dispatchResponse.data.error || 'Failed to dispatch step',
       };
     }
@@ -170,6 +171,7 @@ export async function executeStep(input: ExecuteStepInput): Promise<ExecuteStepO
         knowledgeGained,
         needsApproval: false,
         waitingForUserInput: false,
+        waitingForProvider: false,
       };
     } else if (result.status === 'WAITING_USER_INPUT') {
       return {
@@ -179,6 +181,17 @@ export async function executeStep(input: ExecuteStepInput): Promise<ExecuteStepO
         knowledgeGained: [],
         needsApproval: false,
         waitingForUserInput: true,
+        waitingForProvider: false,
+      };
+    } else if (result.status === 'WAITING_PROVIDER') {
+      return {
+        success: false,
+        outcome: result.output?.summary ?? 'Waiting for provider/model capacity',
+        artifacts: [],
+        knowledgeGained: [],
+        needsApproval: false,
+        waitingForUserInput: false,
+        waitingForProvider: true,
       };
     } else {
       return {
@@ -188,6 +201,7 @@ export async function executeStep(input: ExecuteStepInput): Promise<ExecuteStepO
         knowledgeGained: [],
         needsApproval: false,
         waitingForUserInput: false,
+        waitingForProvider: false,
         error: result.error ?? 'Step execution failed',
       };
     }
@@ -206,6 +220,7 @@ export async function executeStep(input: ExecuteStepInput): Promise<ExecuteStepO
           knowledgeGained: [],
           needsApproval: false,
           waitingForUserInput: false,
+          waitingForProvider: false,
           error: `Orchestrator service unavailable: ${errorMessage}`,
         };
       }
@@ -217,6 +232,7 @@ export async function executeStep(input: ExecuteStepInput): Promise<ExecuteStepO
           knowledgeGained: [],
           needsApproval: false,
           waitingForUserInput: false,
+          waitingForProvider: false,
           error: 'Rate limited, please retry',
         };
       }
@@ -228,6 +244,7 @@ export async function executeStep(input: ExecuteStepInput): Promise<ExecuteStepO
           knowledgeGained: [],
           needsApproval: false,
           waitingForUserInput: false,
+          waitingForProvider: false,
           error: 'Internal authentication failed',
         };
       }
@@ -240,6 +257,7 @@ export async function executeStep(input: ExecuteStepInput): Promise<ExecuteStepO
       knowledgeGained: [],
       needsApproval: false,
       waitingForUserInput: false,
+      waitingForProvider: false,
       error: errorMessage,
     };
   }
@@ -382,7 +400,7 @@ export async function classifyFailure(error: Error): Promise<{
 // ============================================================================
 
 interface TaskResult {
-  status: 'COMPLETED' | 'FAILED' | 'TIMEOUT' | 'WAITING_USER_INPUT';
+  status: 'COMPLETED' | 'FAILED' | 'TIMEOUT' | 'WAITING_USER_INPUT' | 'WAITING_PROVIDER';
   output?: {
     summary?: string;
     result?: string;
@@ -413,7 +431,7 @@ async function pollForTaskCompletionViaOrchestrator(
   while (Date.now() - startTime < timeoutMs) {
     try {
       const response = await axios.get<{
-        status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_USER_INPUT';
+        status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_USER_INPUT' | 'WAITING_PROVIDER';
         output?: {
           summary?: string;
           result?: string;
@@ -449,6 +467,13 @@ async function pollForTaskCompletionViaOrchestrator(
       if (response.data.status === 'WAITING_USER_INPUT') {
         return {
           status: 'WAITING_USER_INPUT',
+          output: response.data.output,
+        };
+      }
+
+      if (response.data.status === 'WAITING_PROVIDER') {
+        return {
+          status: 'WAITING_PROVIDER',
           output: response.data.output,
         };
       }
