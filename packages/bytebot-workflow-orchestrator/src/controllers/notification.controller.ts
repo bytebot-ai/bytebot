@@ -61,6 +61,7 @@ interface CreateChannelDto {
     email?: string;
     // Slack-specific
     channel?: string;
+    channelId?: string;
     username?: string;
     iconEmoji?: string;
     // Teams-specific
@@ -566,23 +567,24 @@ export class NotificationController {
       success: true,
       events: [
         // Goal events
-        { type: 'GOAL_STARTED', category: 'goals', description: 'Goal run has started' },
-        { type: 'GOAL_COMPLETED', category: 'goals', description: 'Goal run completed successfully' },
-        { type: 'GOAL_FAILED', category: 'goals', description: 'Goal run failed' },
-        { type: 'GOAL_CANCELLED', category: 'goals', description: 'Goal run was cancelled' },
-        { type: 'GOAL_PLANNING', category: 'goals', description: 'Goal is being planned' },
-        { type: 'GOAL_EXECUTING', category: 'goals', description: 'Goal is executing' },
+        { type: SlackEventType.GOAL_STARTED, category: 'goals', description: 'Goal run has started' },
+        { type: SlackEventType.GOAL_COMPLETED, category: 'goals', description: 'Goal run completed successfully' },
+        { type: SlackEventType.GOAL_FAILED, category: 'goals', description: 'Goal run failed' },
+        { type: SlackEventType.GOAL_CANCELLED, category: 'goals', description: 'Goal run was cancelled' },
         // Batch events
-        { type: 'BATCH_STARTED', category: 'batches', description: 'Batch execution started' },
-        { type: 'BATCH_COMPLETED', category: 'batches', description: 'Batch execution completed' },
-        { type: 'BATCH_FAILED', category: 'batches', description: 'Batch execution failed' },
-        { type: 'BATCH_CANCELLED', category: 'batches', description: 'Batch execution cancelled' },
-        { type: 'BATCH_PROGRESS', category: 'batches', description: 'Batch progress update' },
+        { type: SlackEventType.BATCH_STARTED, category: 'batches', description: 'Batch execution started' },
+        { type: SlackEventType.BATCH_COMPLETED, category: 'batches', description: 'Batch execution completed' },
+        { type: SlackEventType.BATCH_FAILED, category: 'batches', description: 'Batch execution failed' },
+        { type: SlackEventType.BATCH_PROGRESS, category: 'batches', description: 'Batch progress update' },
         // Approval events
-        { type: 'APPROVAL_REQUESTED', category: 'approvals', description: 'Approval is requested' },
-        { type: 'APPROVAL_APPROVED', category: 'approvals', description: 'Action was approved' },
-        { type: 'APPROVAL_REJECTED', category: 'approvals', description: 'Action was rejected' },
-        { type: 'APPROVAL_EXPIRED', category: 'approvals', description: 'Approval request expired' },
+        { type: SlackEventType.APPROVAL_REQUESTED, category: 'approvals', description: 'Approval is requested' },
+        { type: SlackEventType.APPROVAL_APPROVED, category: 'approvals', description: 'Action was approved' },
+        { type: SlackEventType.APPROVAL_REJECTED, category: 'approvals', description: 'Action was rejected' },
+        { type: SlackEventType.APPROVAL_EXPIRED, category: 'approvals', description: 'Approval request expired' },
+        // External input (UserPrompts)
+        { type: SlackEventType.USER_PROMPT_CREATED, category: 'prompts', description: 'External input requested' },
+        { type: SlackEventType.USER_PROMPT_RESOLVED, category: 'prompts', description: 'External input resolved' },
+        { type: SlackEventType.USER_PROMPT_CANCELLED, category: 'prompts', description: 'External input cancelled' },
       ],
     };
   }
@@ -593,6 +595,37 @@ export class NotificationController {
   private validateChannelConfig(type: NotificationChannelType, config: any) {
     switch (type) {
       case NotificationChannelType.SLACK:
+        // Slack supports either:
+        // - Incoming webhook delivery (webhookUrl), OR
+        // - Bot token delivery (channelId/channel), where the bot token is stored server-side.
+        if (config.webhookUrl) {
+          try {
+            new URL(config.webhookUrl);
+          } catch {
+            throw new HttpException('Invalid webhookUrl format', HttpStatus.BAD_REQUEST);
+          }
+          break;
+        }
+
+        if (config.channelId) {
+          if (typeof config.channelId !== 'string' || config.channelId.trim().length === 0) {
+            throw new HttpException('Invalid channelId', HttpStatus.BAD_REQUEST);
+          }
+          break;
+        }
+
+        if (config.channel) {
+          if (typeof config.channel !== 'string' || config.channel.trim().length === 0) {
+            throw new HttpException('Invalid channel', HttpStatus.BAD_REQUEST);
+          }
+          break;
+        }
+
+        throw new HttpException(
+          'Slack config requires webhookUrl (incoming webhook) or channelId/channel (bot-based delivery)',
+          HttpStatus.BAD_REQUEST,
+        );
+
       case NotificationChannelType.TEAMS:
         if (!config.webhookUrl) {
           throw new HttpException('webhookUrl is required', HttpStatus.BAD_REQUEST);

@@ -20,7 +20,13 @@ import * as crypto from 'crypto';
 
 // Slack configuration interface
 export interface SlackConfig {
-  webhookUrl: string;
+  webhookUrl?: string;
+  /**
+   * Slack channel identifier for bot-based delivery (e.g., C0123456789).
+   * If omitted, ByteBot may resolve `channel` (name) via Slack Web API when
+   * `SLACK_BOT_TOKEN` has conversations:read.
+   */
+  channelId?: string;
   channel?: string;
   username?: string;
   iconEmoji?: string;
@@ -162,6 +168,10 @@ export class SlackNotificationService {
   private readonly logger = new Logger(SlackNotificationService.name);
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  private readonly botToken: string;
+  private readonly channelLookupTtlMs: number;
+  private readonly channelLookupMaxPages: number;
+  private readonly channelIdCache = new Map<string, { channelId: string; expiresAtMs: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -174,6 +184,15 @@ export class SlackNotificationService {
     this.timeoutMs = parseInt(
       this.configService.get<string>('SLACK_TIMEOUT_MS', '10000'),
       10,
+    );
+    this.botToken = (this.configService.get<string>('SLACK_BOT_TOKEN') || '').trim();
+    this.channelLookupTtlMs = this.parsePositiveInt(
+      this.configService.get<string>('SLACK_CHANNEL_LOOKUP_TTL_MS') ?? '',
+      10 * 60 * 1000,
+    );
+    this.channelLookupMaxPages = this.parsePositiveInt(
+      this.configService.get<string>('SLACK_CHANNEL_LOOKUP_MAX_PAGES') ?? '',
+      5,
     );
     this.logger.log('SlackNotificationService initialized');
   }
@@ -729,6 +748,9 @@ export class SlackNotificationService {
     let lastStatusCode: number | undefined;
     let attempts = 0;
 
+    const isWebhookMode =
+      typeof channel.config.webhookUrl === 'string' && channel.config.webhookUrl.trim().length > 0;
+
     // Apply channel-specific settings
     const finalMessage: SlackMessage = {
       ...message,
@@ -742,7 +764,9 @@ export class SlackNotificationService {
       attempts = attempt;
 
       try {
-        const result = await this.sendToSlack(channel.config.webhookUrl, finalMessage);
+        const result = isWebhookMode
+          ? await this.sendToSlackWebhook(channel.config.webhookUrl as string, finalMessage)
+          : await this.sendToSlackBot(channel.config, finalMessage);
 
         if (result.success) {
           this.logger.log(`Slack notification delivered: ${channel.id} (attempt ${attempt})`);
@@ -796,6 +820,13 @@ export class SlackNotificationService {
     webhookUrl: string,
     message: SlackMessage,
   ): Promise<{ success: boolean; statusCode?: number; error?: string }> {
+    return this.sendToSlackWebhook(webhookUrl, message);
+  }
+
+  private async sendToSlackWebhook(
+    webhookUrl: string,
+    message: SlackMessage,
+  ): Promise<{ success: boolean; statusCode?: number; error?: string }> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -830,6 +861,162 @@ export class SlackNotificationService {
 
       return { success: false, error: error.message };
     }
+  }
+
+  private async sendToSlackBot(
+    config: SlackConfig,
+    message: SlackMessage,
+  ): Promise<{ success: boolean; statusCode?: number; error?: string }> {
+    if (!this.botToken) {
+      return { success: false, error: 'Missing SLACK_BOT_TOKEN for bot-based Slack delivery' };
+    }
+
+    const resolvedChannelId = await this.resolveChannelId(config);
+    if (!resolvedChannelId) {
+      return {
+        success: false,
+        error:
+          'Slack channelId resolution failed. Provide config.channelId or grant conversations:read to SLACK_BOT_TOKEN.',
+      };
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    const payload: Record<string, any> = {
+      channel: resolvedChannelId,
+      text: message.text,
+      ...(message.blocks ? { blocks: message.blocks } : {}),
+      ...(message.attachments ? { attachments: message.attachments } : {}),
+    };
+
+    try {
+      const response = await fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.botToken}`,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      // Slack uses 200 with ok=false for most errors; also uses 429 for rate limits.
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('retry-after');
+        return {
+          success: false,
+          statusCode: response.status,
+          error: `Rate limited${retryAfter ? ` (retry-after ${retryAfter}s)` : ''}`,
+        };
+      }
+
+      const json = (await response.json().catch(() => null)) as any;
+      if (response.ok && json?.ok === true) {
+        return { success: true, statusCode: response.status };
+      }
+
+      const err = typeof json?.error === 'string' ? json.error : 'unknown_error';
+      return { success: false, statusCode: response.status, error: `Slack API error: ${err}` };
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+
+      if (error.name === 'AbortError') {
+        return { success: false, error: `Timeout after ${this.timeoutMs}ms` };
+      }
+
+      return { success: false, error: error.message };
+    }
+  }
+
+  private async resolveChannelId(config: SlackConfig): Promise<string | null> {
+    const explicit = typeof config.channelId === 'string' ? config.channelId.trim() : '';
+    if (explicit) return explicit;
+
+    const channel = typeof config.channel === 'string' ? config.channel.trim() : '';
+    if (!channel) return null;
+
+    // Treat values that already look like Slack conversation IDs as IDs.
+    if (/^[CDG][A-Z0-9]{8,}$/.test(channel)) return channel;
+
+    const normalized = channel.startsWith('#') ? channel.slice(1) : channel;
+    if (!normalized) return null;
+
+    const cached = this.channelIdCache.get(normalized);
+    const nowMs = Date.now();
+    if (cached && cached.expiresAtMs > nowMs) return cached.channelId;
+
+    const found = await this.lookupChannelIdByName(normalized);
+    if (found) {
+      this.channelIdCache.set(normalized, { channelId: found, expiresAtMs: nowMs + this.channelLookupTtlMs });
+    }
+    return found;
+  }
+
+  private async lookupChannelIdByName(channelName: string): Promise<string | null> {
+    if (!this.botToken) return null;
+
+    let cursor: string | undefined;
+    for (let page = 0; page < this.channelLookupMaxPages; page++) {
+      const qs = new URLSearchParams({
+        limit: '200',
+        types: 'public_channel,private_channel',
+        exclude_archived: 'true',
+      });
+      if (cursor) qs.set('cursor', cursor);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+      try {
+        const response = await fetch(`https://slack.com/api/conversations.list?${qs.toString()}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${this.botToken}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        const json = (await response.json().catch(() => null)) as any;
+        if (!response.ok || !json || json.ok !== true) {
+          const err = typeof json?.error === 'string' ? json.error : 'unknown_error';
+          this.logger.warn(`Slack channel lookup failed: ${err}`);
+          return null;
+        }
+
+        const channels = Array.isArray(json.channels) ? json.channels : [];
+        const match = channels.find((c: any) => typeof c?.name === 'string' && c.name === channelName);
+        if (match && typeof match?.id === 'string') return match.id;
+
+        cursor =
+          typeof json?.response_metadata?.next_cursor === 'string' ? json.response_metadata.next_cursor : '';
+        if (!cursor) return null;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        if (err?.name === 'AbortError') {
+          this.logger.warn(`Slack channel lookup timeout after ${this.timeoutMs}ms`);
+          return null;
+        }
+        this.logger.warn(`Slack channel lookup error: ${err?.message || String(err)}`);
+        return null;
+      }
+    }
+
+    this.logger.warn(
+      `Slack channel lookup exceeded max pages (${this.channelLookupMaxPages}) for channel: ${channelName}`,
+    );
+    return null;
+  }
+
+  private parsePositiveInt(raw: string, defaultValue: number): number {
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n)) return defaultValue;
+    if (n <= 0) return defaultValue;
+    return n;
   }
 
   /**
