@@ -360,7 +360,10 @@ export class TaskDispatchService implements OnModuleInit {
 
     // Feasibility gate (defense-in-depth): certain goals (e.g., travel-shopping) must not dispatch as TEXT_ONLY.
     // This prevents runs from stalling due to planner/tool drift (missing browser tools).
-    const goalFeasibility = inferGoalFeasibility(request.goalContext);
+    // Prefer the full goal context when present, but fall back to the step description/title so
+    // travel-shopping goals cannot silently misroute to TEXT_ONLY when goalContext propagation is missing.
+    const feasibilityText = request.goalContext ?? request.description ?? request.title;
+    const goalFeasibility = inferGoalFeasibility(feasibilityText);
     const mustUseDesktopSurface = goalFeasibility?.requiredSurface === ExecutionSurface.DESKTOP;
     const requestedSurface =
       request.executionSurface ??

@@ -50,5 +50,53 @@ describe('TaskDispatchService travel feasibility gate', () => {
       }),
     );
   });
-});
 
+  it('auto-upgrades travel-shopping dispatches even when goalContext is missing', async () => {
+    const configService = {
+      get: jest.fn((_key: string, fallback: any) => fallback),
+    } as any;
+    const prisma = {} as any;
+    const dbTransientService = {} as any;
+    const eventEmitter = { emit: jest.fn() } as any;
+    const userPromptService = {} as any;
+    const outboxService = {} as any;
+
+    const service = new TaskDispatchService(
+      configService,
+      prisma,
+      dbTransientService,
+      eventEmitter,
+      userPromptService,
+      outboxService,
+    );
+
+    // Avoid real HTTP and side effects
+    (service as any).httpClient = {
+      post: jest.fn().mockResolvedValue({ status: 201, data: { id: 'task-2' } }),
+    };
+    jest.spyOn(service as any, 'emitActivityEvent').mockResolvedValue(undefined);
+
+    await service.dispatchTask({
+      goalRunId: 'gr-2',
+      checklistItemId: 'ci-2',
+      workspaceId: 'ws-2',
+      title: 'Price a trip',
+      description: 'Search for round-trip flights from DTW to LAS for Feb 21-28',
+      allowedTools: [],
+      requiresDesktop: false,
+      executionSurface: ExecutionSurface.TEXT_ONLY,
+      // goalContext intentionally omitted
+      previousStepResults: '',
+      attempt: 1,
+    });
+
+    expect((service as any).httpClient.post).toHaveBeenCalledWith(
+      '/tasks',
+      expect.objectContaining({
+        requiresDesktop: true,
+        executionSurface: ExecutionSurface.DESKTOP,
+        allowedTools: expect.arrayContaining(['browser']),
+      }),
+    );
+  });
+});
