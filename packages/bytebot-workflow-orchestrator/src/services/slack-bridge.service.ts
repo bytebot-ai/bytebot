@@ -39,6 +39,7 @@ export class SlackBridgeService {
   private readonly signingSecret: string;
   private readonly botToken: string;
   private readonly enabled: boolean;
+  private readonly interactivityTimeoutMs: number;
 
   constructor(
     private readonly configService: ConfigService,
@@ -49,10 +50,15 @@ export class SlackBridgeService {
     this.enabled =
       (this.configService.get<string>('SLACK_REPLY_IN_SLACK_ENABLED') || '').trim().toLowerCase() ===
       'true';
+    this.interactivityTimeoutMs = this.parsePositiveInt(
+      this.configService.get<string>('SLACK_INTERACTIVITY_TIMEOUT_MS') ?? '',
+      2500,
+    );
   }
 
   isEnabled(): boolean {
-    return this.enabled && this.signingSecret.length > 0;
+    // Reply-in-Slack requires both signature verification and an app token for modals.
+    return this.enabled && this.signingSecret.length > 0 && this.botToken.length > 0;
   }
 
   verifySlackRequest(args: {
@@ -133,15 +139,16 @@ export class SlackBridgeService {
       };
     }
 
-    if (!this.botToken) {
+    const ok = await this.openResolveModal(triggerId, metadata);
+    if (!ok) {
       return {
-        text: 'Slack bot token is not configured. Use the "Open Prompt" button instead.',
+        text: 'Failed to open Slack modal. Use the "Open Prompt" button instead.',
         response_type: 'ephemeral',
         replace_original: false,
       };
     }
 
-    await this.openResolveModal(triggerId, metadata);
+    // Empty string response acknowledges the action (Slack will replace original only if asked).
     return '';
   }
 
@@ -166,7 +173,7 @@ export class SlackBridgeService {
     const viewId = typeof payload.view?.id === 'string' ? payload.view.id : 'unknown';
     const idempotencyKey = `slack:view_submission:${viewId}`;
 
-    await this.userPromptResolutionService.resolvePrompt({
+    const resolvePromise = this.userPromptResolutionService.resolvePrompt({
       promptId: metadata.promptId,
       tenantId: metadata.tenantId,
       actor: {
@@ -184,6 +191,28 @@ export class SlackBridgeService {
       ipAddress: undefined,
       userAgent: undefined,
     });
+
+    // Slack expects handlers to respond quickly (commonly ~3 seconds). If resolution takes too long,
+    // clear the modal and allow the resolution to finish asynchronously. Idempotency prevents duplicates.
+    resolvePromise.catch((err: any) => {
+      this.logger.warn(
+        `Slack prompt resolve failed (will surface via prompt status): ${err?.message || String(err)}`,
+      );
+    });
+
+    try {
+      await this.withTimeout(resolvePromise, this.interactivityTimeoutMs);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg === 'timeout') {
+        this.logger.warn(
+          `Slack view_submission handler exceeded ${this.interactivityTimeoutMs}ms budget; continuing resolve asynchronously`,
+        );
+        return { response_action: 'clear' };
+      }
+
+      return { response_action: 'errors', errors: { answer: 'Failed to resolve prompt. Use "Open Prompt".' } };
+    }
 
     return { response_action: 'clear' };
   }
@@ -227,7 +256,7 @@ export class SlackBridgeService {
     return null;
   }
 
-  private async openResolveModal(triggerId: string, metadata: SlackPromptMetadata): Promise<void> {
+  private async openResolveModal(triggerId: string, metadata: SlackPromptMetadata): Promise<boolean> {
     const view = {
       type: 'modal',
       callback_id: 'bytebot_user_prompt_resolve',
@@ -259,18 +288,47 @@ export class SlackBridgeService {
       ],
     };
 
-    const response = await fetch('https://slack.com/api/views.open', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.botToken}`,
-        'Content-Type': 'application/json; charset=utf-8',
-      },
-      body: JSON.stringify({ trigger_id: triggerId, view }),
-    });
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), this.interactivityTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch('https://slack.com/api/views.open', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.botToken}`,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify({ trigger_id: triggerId, view }),
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      const msg = err?.name === 'AbortError' ? 'timeout' : err?.message || String(err);
+      this.logger.warn(`Slack views.open failed: ${msg}`);
+      clearTimeout(t);
+      return false;
+    } finally {
+      clearTimeout(t);
+    }
 
     const json = await response.json().catch(() => null);
     if (!response.ok || !json || json.ok !== true) {
       this.logger.warn(`Slack views.open failed: ${response.status} ${JSON.stringify(json)}`);
+      return false;
     }
+
+    return true;
+  }
+
+  private parsePositiveInt(raw: string, fallback: number): number {
+    const val = parseInt(String(raw || '').trim(), 10);
+    if (!Number.isFinite(val) || val <= 0) return fallback;
+    return val;
+  }
+
+  private async withTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T> {
+    return await Promise.race([
+      p,
+      new Promise<T>((_resolve, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs)),
+    ]);
   }
 }
