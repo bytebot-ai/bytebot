@@ -516,10 +516,17 @@ export class NotificationController {
         {
           type: NotificationChannelType.SLACK,
           name: 'Slack',
-          description: 'Send notifications to a Slack channel via Incoming Webhook',
+          description: 'Send notifications to a Slack channel (webhook or bot token)',
           configFields: [
-            { name: 'webhookUrl', type: 'string', required: true, description: 'Slack Incoming Webhook URL' },
-            { name: 'channel', type: 'string', required: false, description: 'Override channel (optional)' },
+            {
+              name: 'webhookUrl',
+              type: 'string',
+              required: false,
+              description:
+                'Slack Incoming Webhook URL (webhook mode). If omitted, ByteBot can post via bot token using channelId/channel.',
+            },
+            { name: 'channelId', type: 'string', required: false, description: 'Slack conversation ID (bot mode)' },
+            { name: 'channel', type: 'string', required: false, description: 'Channel name like #butler-vantage (bot mode)' },
             { name: 'username', type: 'string', required: false, description: 'Bot username (optional)' },
             { name: 'iconEmoji', type: 'string', required: false, description: 'Bot icon emoji (optional)' },
           ],
