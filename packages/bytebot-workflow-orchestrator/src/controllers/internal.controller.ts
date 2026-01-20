@@ -454,6 +454,71 @@ export class InternalController {
         throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
       }
 
+      const normalizeErrorCode = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+      const normalizeMessage = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+
+      const extractNeedsHelp = (): { errorCode: string; message: string } => {
+        const result = task.result && typeof task.result === 'object' ? (task.result as any) : null;
+        return {
+          errorCode:
+            normalizeErrorCode(result?.errorCode) ||
+            normalizeErrorCode(result?.code) ||
+            '',
+          message:
+            normalizeMessage(result?.message) ||
+            normalizeMessage(result?.question) ||
+            normalizeMessage(result?.description) ||
+            '',
+        };
+      };
+
+      const promptEligibleNeedsHelpCodes = new Set<string>([
+        // External input / takeover only. Strategy and repair MUST NOT land here.
+        'DISPATCHED_USER_PROMPT_STEP',
+        'UI_BLOCKED_SIGNIN',
+        'UI_BLOCKED_POPUP',
+      ]);
+
+      const isNeedsHelp = task.status === 'NEEDS_HELP' || task.status === 'NEEDS_REVIEW';
+      if (isNeedsHelp) {
+        const { errorCode, message } = extractNeedsHelp();
+
+        // Contract: untyped needs_help must never create WAITING_USER_INPUT.
+        if (!errorCode) {
+          return {
+            status: 'FAILED',
+            error: 'NEEDS_HELP missing errorCode (contract violation)',
+          };
+        }
+
+        // Contract: strategy-as-help must never strand a run waiting for a user.
+        if (errorCode === 'AGENT_REQUESTED_HELP') {
+          return {
+            status: 'FAILED',
+            error: `NEEDS_HELP(${errorCode}) is strategy-only and is not external input`,
+          };
+        }
+
+        if (promptEligibleNeedsHelpCodes.has(errorCode)) {
+          return {
+            status: 'WAITING_USER_INPUT',
+            output: task.result
+              ? {
+                  summary: message || 'Waiting for user input',
+                  result: JSON.stringify(task.result),
+                  artifacts: (task.result as any)?.artifacts,
+                }
+              : undefined,
+          };
+        }
+
+        // Default: treat non-allowlisted NEEDS_HELP as an internal failure signal so the workflow can retry/replan.
+        return {
+          status: 'FAILED',
+          error: `NEEDS_HELP(${errorCode}) routed to internal repair: ${message || 'no message'}`,
+        };
+      }
+
       // Map agent task status to our format
       const statusMap: Record<string, 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_USER_INPUT'> = {
         'PENDING': 'PENDING',
@@ -461,8 +526,6 @@ export class InternalController {
         'COMPLETED': 'COMPLETED',
         'FAILED': 'FAILED',
         'CANCELLED': 'FAILED',
-        'NEEDS_HELP': 'WAITING_USER_INPUT',
-        'NEEDS_REVIEW': 'WAITING_USER_INPUT',
       };
 
       return {

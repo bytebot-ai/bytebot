@@ -7,9 +7,11 @@ describe('InternalController planner/dispatch contract gates', () => {
     requestGoalIntakeFromPlannerError: jest.Mock;
     prismaGoalRunFindUnique: jest.Mock;
     dispatchTask: jest.Mock;
+    getTaskStatus: jest.Mock;
   }>) => {
     const taskDispatchService = {
       dispatchTask: overrides?.dispatchTask ?? jest.fn(),
+      getTaskStatus: overrides?.getTaskStatus ?? jest.fn(),
     } as any;
 
     const prismaService = {
@@ -189,5 +191,36 @@ describe('InternalController planner/dispatch contract gates', () => {
       expect(dispatchTask).not.toHaveBeenCalled();
     });
   });
-});
 
+  describe('GET /api/v1/internal/task-status/:taskId', () => {
+    it('treats AGENT_REQUESTED_HELP as FAILED (strategy is not external input)', async () => {
+      const getTaskStatus = jest.fn().mockResolvedValue({
+        status: 'NEEDS_HELP',
+        result: { errorCode: 'AGENT_REQUESTED_HELP', message: 'Which flight site should I use?' },
+        error: null,
+      });
+
+      const controller = makeController({ getTaskStatus });
+
+      const result = await controller.getTaskStatus('task1', 'true', 't1');
+
+      expect(result.status).toBe('FAILED');
+      expect(result.error).toMatch(/AGENT_REQUESTED_HELP/i);
+    });
+
+    it('returns WAITING_USER_INPUT only for allowlisted NEEDS_HELP codes', async () => {
+      const getTaskStatus = jest.fn().mockResolvedValue({
+        status: 'NEEDS_HELP',
+        result: { errorCode: 'UI_BLOCKED_SIGNIN', message: 'Sign-in required' },
+        error: null,
+      });
+
+      const controller = makeController({ getTaskStatus });
+
+      const result = await controller.getTaskStatus('task1', 'true', 't1');
+
+      expect(result.status).toBe('WAITING_USER_INPUT');
+      expect(result.output?.summary).toBe('Sign-in required');
+    });
+  });
+});
