@@ -706,11 +706,14 @@ export class SlackNotificationService {
   }
 
   private isReplyInSlackEnabled(): boolean {
-    return (
-      (this.configService.get<string>('SLACK_REPLY_IN_SLACK_ENABLED') || '')
-        .trim()
-        .toLowerCase() === 'true'
-    );
+    const enabledFlag =
+      (this.configService.get<string>('SLACK_REPLY_IN_SLACK_ENABLED') || '').trim().toLowerCase() === 'true';
+    if (!enabledFlag) return false;
+
+    const signingSecret = (this.configService.get<string>('SLACK_SIGNING_SECRET') || '').trim();
+    const botToken = (this.configService.get<string>('SLACK_BOT_TOKEN') || '').trim();
+
+    return signingSecret.length > 0 && botToken.length > 0;
   }
 
   /**
