@@ -1,5 +1,5 @@
 import { OrchestratorLoopService } from './orchestrator-loop.service';
-import { ChecklistItemStatus, GoalRunPhase } from '@prisma/client';
+import { ChecklistItemStatus, GoalRunPhase, GoalRunWaitReason } from '@prisma/client';
 
 describe('OrchestratorLoopService WAITING_PROVIDER gate', () => {
   it('blocks step and transitions run to WAITING_PROVIDER', async () => {
@@ -75,7 +75,10 @@ describe('OrchestratorLoopService WAITING_PROVIDER gate', () => {
         id: 'gr-1',
         phase: { in: [GoalRunPhase.EXECUTING, GoalRunPhase.CONTROLLING_DESKTOP] },
       },
-      data: { phase: GoalRunPhase.WAITING_PROVIDER },
+      data: expect.objectContaining({
+        phase: GoalRunPhase.WAITING_PROVIDER,
+        waitReason: GoalRunWaitReason.PROVIDER,
+      }),
     });
 
     expect(goalRunService.createActivityEvent).toHaveBeenCalledWith(
@@ -163,4 +166,3 @@ describe('OrchestratorLoopService WAITING_PROVIDER gate', () => {
     expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
   });
 });
-

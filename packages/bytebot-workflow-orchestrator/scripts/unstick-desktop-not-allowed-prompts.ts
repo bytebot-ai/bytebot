@@ -1,5 +1,6 @@
 import {
   PrismaClient,
+  Prisma,
   UserPromptKind,
   UserPromptStatus,
   GoalRunPhase,
@@ -236,7 +237,13 @@ async function main(): Promise<void> {
         if (remainingOpen === 0) {
           const updatedRun = await tx.goalRun.updateMany({
             where: { id: prompt.goalRunId, phase: GoalRunPhase.WAITING_USER_INPUT },
-            data: { phase: GoalRunPhase.EXECUTING },
+            data: {
+              phase: GoalRunPhase.EXECUTING,
+              waitReason: null,
+              waitDetail: Prisma.DbNull,
+              waitStartedAt: null,
+              waitUntil: null,
+            },
           });
           if (updatedRun.count > 0) resumed++;
         }

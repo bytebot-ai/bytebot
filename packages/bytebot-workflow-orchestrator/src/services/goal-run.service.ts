@@ -24,6 +24,7 @@ import {
   GoalRunExecutionEngine,
   GoalRunPhase,
   GoalRunStatus,
+  GoalRunWaitReason,
   ChecklistItemStatus,
   ExecutionSurface,
   Prisma,
@@ -75,6 +76,10 @@ export interface GoalRunResponse {
   phase: GoalRunPhase;
   status: GoalRunStatus;
   executionEngine: GoalRunExecutionEngine;
+  waitReason?: GoalRunWaitReason | null;
+  waitDetail?: any | null;
+  waitStartedAt?: Date | null;
+  waitUntil?: Date | null;
   workflowRunId?: string | null;
   temporalWorkflowId?: string | null;
   temporalRunId?: string | null;
@@ -383,7 +388,15 @@ export class GoalRunService {
 
       const failed = await this.prisma.goalRun.update({
         where: { id: goalRunId },
-        data: { status: GoalRunStatus.FAILED, phase: GoalRunPhase.FAILED, error },
+        data: {
+          status: GoalRunStatus.FAILED,
+          phase: GoalRunPhase.FAILED,
+          error,
+          waitReason: null,
+          waitDetail: Prisma.DbNull,
+          waitStartedAt: null,
+          waitUntil: null,
+        },
       });
 
       return this.toGoalRunResponse(failed);
@@ -526,30 +539,99 @@ export class GoalRunService {
   /**
    * Update goal run phase
    */
-  async updatePhase(goalRunId: string, phase: GoalRunPhase): Promise<GoalRunResponse> {
+  async updatePhase(
+    goalRunId: string,
+    phase: GoalRunPhase,
+    opts?: {
+      waitReason?: GoalRunWaitReason;
+      waitDetail?: Prisma.InputJsonValue | null;
+      waitUntil?: Date | null;
+    },
+  ): Promise<GoalRunResponse> {
     this.logger.log(`Updating goal run ${goalRunId} phase to ${phase}`);
 
     const previousGoalRun = await this.prisma.goalRun.findUnique({
       where: { id: goalRunId },
     });
 
+    if (!previousGoalRun) {
+      throw new NotFoundException(`Goal run ${goalRunId} not found`);
+    }
+
+    const defaultWaitReasonByPhase: Partial<Record<GoalRunPhase, GoalRunWaitReason>> = {
+      [GoalRunPhase.WAITING_USER_INPUT]: GoalRunWaitReason.USER_INPUT,
+      [GoalRunPhase.WAITING_APPROVAL]: GoalRunWaitReason.APPROVAL,
+      [GoalRunPhase.WAITING_PROVIDER]: GoalRunWaitReason.PROVIDER,
+      [GoalRunPhase.WAITING_CAPACITY]: GoalRunWaitReason.CAPACITY,
+      [GoalRunPhase.PAUSED]: GoalRunWaitReason.POLICY,
+    };
+
+    const derivedWaitReason: GoalRunWaitReason | null =
+      opts?.waitReason ?? defaultWaitReasonByPhase[phase] ?? null;
+
+    const now = new Date();
+    const isSamePhase = previousGoalRun.phase === phase;
+    const isSameWaitReason = (previousGoalRun as any).waitReason === derivedWaitReason;
+
+    const nextWaitStartedAt =
+      derivedWaitReason && isSamePhase && isSameWaitReason && (previousGoalRun as any).waitStartedAt
+        ? (previousGoalRun as any).waitStartedAt
+        : derivedWaitReason
+          ? now
+          : null;
+
+    const nextWaitUntil =
+      derivedWaitReason && isSamePhase
+        ? (opts?.waitUntil ?? (previousGoalRun as any).waitUntil ?? null)
+        : derivedWaitReason
+          ? (opts?.waitUntil ?? null)
+          : null;
+
+    const nextWaitDetail =
+      derivedWaitReason && isSamePhase
+        ? (opts?.waitDetail ?? (previousGoalRun as any).waitDetail ?? null)
+        : derivedWaitReason
+          ? (opts?.waitDetail ?? null)
+          : null;
+
+    const needsUpdate =
+      !isSamePhase ||
+      (previousGoalRun as any).waitReason !== derivedWaitReason ||
+      (previousGoalRun as any).waitStartedAt !== nextWaitStartedAt ||
+      (previousGoalRun as any).waitUntil !== nextWaitUntil ||
+      (previousGoalRun as any).waitDetail !== nextWaitDetail;
+
+    if (!needsUpdate) {
+      return this.toGoalRunResponse(previousGoalRun);
+    }
+
+    const data: Prisma.GoalRunUpdateInput = {
+      phase,
+      waitReason: derivedWaitReason,
+      waitStartedAt: nextWaitStartedAt,
+      waitUntil: nextWaitUntil,
+      waitDetail: nextWaitDetail === null ? Prisma.DbNull : nextWaitDetail,
+    };
+
     const goalRun = await this.prisma.goalRun.update({
       where: { id: goalRunId },
-      data: { phase },
+      data,
     });
 
     // Emit phase change event
-    this.eventEmitter.emit('goal-run.phase-changed', {
-      goalRunId,
-      previousPhase: previousGoalRun?.phase,
-      newPhase: phase,
-    });
+    if (!isSamePhase) {
+      this.eventEmitter.emit('goal-run.phase-changed', {
+        goalRunId,
+        previousPhase: previousGoalRun.phase,
+        newPhase: phase,
+      });
 
-    await this.createActivityEvent(goalRunId, {
-      eventType: 'PHASE_CHANGED',
-      title: `Phase changed to ${phase}`,
-      description: `Previous phase: ${previousGoalRun?.phase}`,
-    });
+      await this.createActivityEvent(goalRunId, {
+        eventType: 'PHASE_CHANGED',
+        title: `Phase changed to ${phase}`,
+        description: `Previous phase: ${previousGoalRun.phase}`,
+      });
+    }
 
     return this.toGoalRunResponse(goalRun);
   }
@@ -566,6 +648,11 @@ export class GoalRunService {
       data.completedAt = new Date();
       data.phase =
         status === GoalRunStatus.COMPLETED ? GoalRunPhase.COMPLETED : GoalRunPhase.FAILED;
+      // Terminal statuses must not retain stale WAIT fields.
+      (data as any).waitReason = null;
+      (data as any).waitDetail = Prisma.DbNull;
+      (data as any).waitStartedAt = null;
+      (data as any).waitUntil = null;
     }
 
     const goalRun = await this.prisma.goalRun.update({
@@ -602,10 +689,7 @@ export class GoalRunService {
   async pauseGoalRun(goalRunId: string): Promise<GoalRunResponse> {
     this.logger.log(`Pausing goal run ${goalRunId}`);
 
-    const goalRun = await this.prisma.goalRun.update({
-      where: { id: goalRunId },
-      data: { phase: GoalRunPhase.PAUSED },
-    });
+    const goalRun = await this.updatePhase(goalRunId, GoalRunPhase.PAUSED);
 
     // Send pause signal to Temporal workflow if active
     if (goalRun.workflowRunId && this.temporalWorkflowService?.isEnabled()) {
@@ -679,10 +763,7 @@ export class GoalRunService {
       ? GoalRunPhase.EXECUTING
       : GoalRunPhase.PLANNING;
 
-    const goalRun = await this.prisma.goalRun.update({
-      where: { id: goalRunId },
-      data: { phase: resumePhase },
-    });
+    const goalRun = await this.updatePhase(goalRunId, resumePhase);
 
     // Send resume signal to Temporal workflow if active
     if (goalRun.workflowRunId && this.temporalWorkflowService?.isEnabled()) {
@@ -1127,6 +1208,10 @@ export class GoalRunService {
       where: { id: goalRunId },
       data: {
         phase: GoalRunPhase.CONTROLLING_DESKTOP,
+        waitReason: null,
+        waitDetail: Prisma.DbNull,
+        waitStartedAt: null,
+        waitUntil: null,
       },
     });
 
@@ -1152,6 +1237,10 @@ export class GoalRunService {
       where: { id: goalRunId },
       data: {
         phase: GoalRunPhase.EXECUTING,
+        waitReason: null,
+        waitDetail: Prisma.DbNull,
+        waitStartedAt: null,
+        waitUntil: null,
       },
     });
 
@@ -1190,7 +1279,13 @@ export class GoalRunService {
     if (goalRun?.phase === GoalRunPhase.WAITING_APPROVAL) {
       await this.prisma.goalRun.update({
         where: { id: goalRunId },
-        data: { phase: GoalRunPhase.EXECUTING },
+        data: {
+          phase: GoalRunPhase.EXECUTING,
+          waitReason: null,
+          waitDetail: Prisma.DbNull,
+          waitStartedAt: null,
+          waitUntil: null,
+        },
       });
     }
 
@@ -1329,6 +1424,10 @@ export class GoalRunService {
       status: goalRun.status,
       executionEngine:
         goalRun.executionEngine ?? GoalRunExecutionEngine.LEGACY_DB_LOOP,
+      waitReason: goalRun.waitReason ?? null,
+      waitDetail: goalRun.waitDetail ?? null,
+      waitStartedAt: goalRun.waitStartedAt ?? null,
+      waitUntil: goalRun.waitUntil ?? null,
       workflowRunId: goalRun.workflowRunId,
       temporalWorkflowId: goalRun.temporalWorkflowId ?? null,
       temporalRunId: goalRun.temporalRunId ?? null,

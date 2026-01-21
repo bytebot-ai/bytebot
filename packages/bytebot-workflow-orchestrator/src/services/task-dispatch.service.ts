@@ -34,6 +34,7 @@ import {
   ExecutionSurface,
   GoalRunExecutionEngine,
   GoalRunPhase,
+  GoalRunWaitReason,
   UserPromptKind,
   UserPromptStatus,
 } from '@prisma/client';
@@ -1562,7 +1563,16 @@ export class TaskDispatchService implements OnModuleInit {
               in: [GoalRunPhase.EXECUTING, GoalRunPhase.CONTROLLING_DESKTOP],
             },
           },
-          data: { phase: GoalRunPhase.WAITING_USER_INPUT },
+          data: {
+            phase: GoalRunPhase.WAITING_USER_INPUT,
+            waitReason: GoalRunWaitReason.USER_INPUT,
+            waitStartedAt: new Date(),
+            waitUntil: null,
+            waitDetail: {
+              kind: 'USER_PROMPT',
+              source: 'TASK_DISPATCH',
+            } as any,
+          },
         });
       },
       `TaskDispatch.transitionGoalRunToWaitingUserInput.update.${goalRunId}`,

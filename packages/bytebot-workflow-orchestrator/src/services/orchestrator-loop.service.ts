@@ -65,12 +65,14 @@ import { WorkflowService, WorkflowStatus, NodeStatus, WorkspaceProvisioningStatu
 import { TaskDispatchService } from './task-dispatch.service';
 import { DbTransientService } from './db-transient.service';
 import { MaintenanceModeService, MaintenanceState } from './maintenance-mode.service';
-import { FailureClassificationService, FailureCategory } from './failure-classification.service';
+import { FailureClassificationService } from './failure-classification.service';
 import { GoalCheckpointService } from './goal-checkpoint.service';
 import {
   ChecklistItemStatus,
   ExecutionSurface,
+  GoalRunWaitReason,
   GoalSpecStatus,
+  Prisma,
   StepType,
   UserPromptCancelReason,
   UserPromptKind,
@@ -131,6 +133,7 @@ interface LoopDecision {
   reason?: string;
   retryCount?: number;  // v1.1.1: Infrastructure retry count
   retryDelayMs?: number;  // v1.1.1: Delay before retry (exponential backoff)
+  retryCategory?: 'INFRA' | 'HEARTBEAT';
 }
 
 interface ActiveLoop {
@@ -143,18 +146,15 @@ interface ActiveLoop {
 export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OrchestratorLoopService.name);
   private readonly activeLoops = new Map<string, ActiveLoop>();
-  private readonly replanCounts = new Map<string, number>();
-  // v1.1.1: Track infrastructure retry counts per checklist item
-  // Key: checklistItemId, Value: retry count
-  private readonly infraRetryCounts = new Map<string, number>();
-  // v1.1.1: Track next eligible retry time per checklist item (exponential backoff)
-  // Key: checklistItemId, Value: timestamp when retry is allowed
-  private readonly infraRetryAfter = new Map<string, number>();
   // v1.6.0: Configurable loop interval from env var
   private readonly loopIntervalMs: number;
   // v1.7.0: Restart grace window - don't timeout/replan during grace
   private readonly restartGraceMs: number;
   private readonly processStartAt: number;
+  // Durable retry configuration (used with ChecklistItem retry fields)
+  private readonly heartbeatMaxRetries: number;
+  private readonly heartbeatBaseDelayMs: number;
+  private readonly heartbeatMaxDelayMs: number;
   // v1.7.0: Track which goal runs have been reconciled after restart
   private readonly reconciledGoalRuns = new Set<string>();
   // v1.9.0 Phase D: Track last delay notification time per checklist item
@@ -188,6 +188,11 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       this.configService.get<string>('ORCHESTRATOR_RESTART_GRACE_MS', String(DEFAULT_RESTART_GRACE_MS)),
       10,
     );
+
+    // Use the same env knobs as FailureClassificationService, but persist budgets in the DB.
+    this.heartbeatMaxRetries = parseInt(this.configService.get<string>('HEARTBEAT_MAX_RETRIES', '5'), 10);
+    this.heartbeatBaseDelayMs = parseInt(this.configService.get<string>('HEARTBEAT_BASE_DELAY_MS', '15000'), 10);
+    this.heartbeatMaxDelayMs = parseInt(this.configService.get<string>('HEARTBEAT_MAX_DELAY_MS', '60000'), 10);
   }
 
   /**
@@ -297,7 +302,6 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
     };
 
     this.activeLoops.set(goalRunId, loop);
-    this.replanCounts.set(goalRunId, 0);
 
     // Run first iteration immediately
     await this.runLoopIteration(goalRunId);
@@ -312,7 +316,6 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       clearInterval(loop.intervalId);
       loop.isRunning = false;
       this.activeLoops.delete(goalRunId);
-      this.replanCounts.delete(goalRunId);
       this.logger.log(`Stopped orchestrator loop for goal run ${goalRunId}`);
     }
   }
@@ -320,11 +323,19 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
   /**
    * Get loop status
    */
-  getLoopStatus(goalRunId: string): { running: boolean; replanCount: number } {
+  async getLoopStatus(goalRunId: string): Promise<{ running: boolean; replanCount: number }> {
     const loop = this.activeLoops.get(goalRunId);
+    const goalRun = await this.prisma.goalRun.findUnique({
+      where: { id: goalRunId },
+      select: { currentPlanVersion: true },
+    });
+
+    // Durable: replans = currentPlanVersion - 1 (initial plan is version 1).
+    const currentPlanVersion = goalRun?.currentPlanVersion || 0;
+    const replanCount = Math.max(0, currentPlanVersion - 1);
     return {
       running: loop?.isRunning || false,
-      replanCount: this.replanCounts.get(goalRunId) || 0,
+      replanCount,
     };
   }
 
@@ -525,6 +536,7 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
 
       case GoalRunPhase.EXECUTING:
       case GoalRunPhase.CONTROLLING_DESKTOP:
+      case GoalRunPhase.WAITING_CAPACITY:
         // Find next item to execute
         const pendingItem = items.find(
           (item: any) => item.status === ChecklistItemStatus.PENDING,
@@ -574,49 +586,36 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
           // Previous behavior (v1.8.0): REPLAN consumed replan budget → exhausted after 3 heartbeat gaps
           // New behavior (v2.1.0): RETRY uses separate heartbeat budget (5 retries)
           if (heartbeatHealth.shouldTimeout) {
-            // Use failure classification service for intelligent retry/replan decision
-            const classification = this.failureClassificationService.classifyHeartbeatTimeout(
-              inProgressItem.id,
-              heartbeatHealth.consecutiveUnhealthy,
-              heartbeatHealth.lastHeartbeat ?? null, // Convert undefined to null
-              {
-                goalRunId: goalRun.id,
-                stepDescription: inProgressItem.description,
-                timeSinceProgress,
-              },
-            );
+            const currentRetries = inProgressItem.heartbeatRetryCount ?? 0;
+
+            // Durable budget (DB-backed): once exhausted, pause safely (no retry storm, no semantic replan).
+            if (currentRetries >= this.heartbeatMaxRetries) {
+              return {
+                action: 'WAIT_PROVIDER',
+                reason: `Heartbeat retries exhausted (${this.heartbeatMaxRetries}): ${inProgressItem.description}`,
+                itemId: inProgressItem.id,
+              };
+            }
+
+            const retryCount = currentRetries + 1;
+            const exponentialDelay = this.heartbeatBaseDelayMs * Math.pow(2, currentRetries);
+            const jitter = (Math.random() - 0.5) * 0.2 * exponentialDelay; // ±10% jitter
+            const retryDelayMs = Math.min(exponentialDelay + jitter, this.heartbeatMaxDelayMs);
 
             this.logger.warn(
               `Step ${inProgressItem.id} heartbeat timeout: ` +
               `${heartbeatHealth.consecutiveUnhealthy} consecutive unhealthy checks, ` +
               `last heartbeat: ${heartbeatHealth.lastHeartbeat?.toISOString() || 'never'} → ` +
-              `${classification.suggestedAction} (${classification.reasoning})`,
+              `RETRY ${retryCount}/${this.heartbeatMaxRetries} (delay ${Math.round(retryDelayMs / 1000)}s)`,
             );
 
-            if (classification.suggestedAction === 'RETRY') {
-              // Consume retry from heartbeat budget
-              const retry = this.failureClassificationService.consumeRetry(
-                inProgressItem.id,
-                'HEARTBEAT',
-              );
-
-              if (retry) {
-                return {
-                  action: 'RETRY',
-                  reason: `Heartbeat timeout (retry ${retry.retryCount}): ${inProgressItem.description}`,
-                  itemId: inProgressItem.id,
-                  retryCount: retry.retryCount,
-                  retryDelayMs: retry.delayMs,
-                };
-              }
-            }
-
-            // Heartbeat retries exhausted - pause safely (no replan churn).
-            // Heartbeat gaps are infra/provider degradation, not a strategy/planning error.
             return {
-              action: 'WAIT_PROVIDER',
-              reason: `Heartbeat retries exhausted: ${inProgressItem.description}`,
+              action: 'RETRY',
+              retryCategory: 'HEARTBEAT',
+              reason: `Heartbeat timeout (retry ${retryCount}/${this.heartbeatMaxRetries}): ${inProgressItem.description}`,
               itemId: inProgressItem.id,
+              retryCount,
+              retryDelayMs,
             };
           }
 
@@ -661,6 +660,17 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
         }
 
         if (pendingItem) {
+          // Durable retry gating: if the next step was reset to PENDING with a backoff window,
+          // do not re-dispatch until the gate expires (prevents tight-loop retries).
+          const now = new Date();
+          const gateUntil = [pendingItem.infraRetryAfter, pendingItem.heartbeatRetryAfter]
+            .filter((d): d is Date => Boolean(d))
+            .reduce<Date | null>((max, d) => (!max || d > max ? d : max), null);
+
+          if (gateUntil && gateUntil > now) {
+            return { action: 'CONTINUE' };
+          }
+
           return { action: 'EXECUTE', itemId: pendingItem.id };
         }
 
@@ -674,17 +684,13 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
 
           if (isInfraFailure) {
             // Infrastructure failure - retry the step instead of replanning
-            const infraRetryCount = this.infraRetryCounts.get(failedItem.id) || 0;
+            const infraRetryCount = failedItem.infraRetryCount || 0;
 
             if (infraRetryCount >= MAX_INFRA_RETRIES) {
               this.logger.warn(
                 `Infrastructure retries exhausted (${MAX_INFRA_RETRIES}) for step ${failedItem.id}, ` +
                 `entering WAITING_PROVIDER`
               );
-
-              // Clear infra retry tracking before pausing (resume will re-attempt)
-              this.infraRetryCounts.delete(failedItem.id);
-              this.infraRetryAfter.delete(failedItem.id);
 
               return {
                 action: 'WAIT_PROVIDER',
@@ -694,13 +700,6 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
                 itemId: failedItem.id,
               };
             } else {
-              // Check if backoff period has elapsed
-              const retryAfter = this.infraRetryAfter.get(failedItem.id) || 0;
-              if (Date.now() < retryAfter) {
-                // Still in backoff period - wait
-                return { action: 'CONTINUE' };
-              }
-
               // Calculate exponential backoff delay for next retry
               const retryDelay = INFRA_RETRY_BASE_DELAY_MS * Math.pow(2, infraRetryCount);
 
@@ -710,15 +709,15 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
                 itemId: failedItem.id,
                 retryCount: infraRetryCount + 1,
                 retryDelayMs: retryDelay,
+                retryCategory: 'INFRA',
               };
             }
           }
 
-          // Semantic failure - clear any infra retry tracking and proceed to replan
-          this.infraRetryCounts.delete(failedItem.id);
-          this.infraRetryAfter.delete(failedItem.id);
-
-          const replanCount = this.replanCounts.get(goalRun.id) || 0;
+          // Semantic failure - proceed to replan.
+          // Durable: replans = currentPlanVersion - 1 (initial plan is version 1).
+          const currentPlanVersion = goalRun.currentPlanVersion || currentPlan?.version || 0;
+          const replanCount = Math.max(0, currentPlanVersion - 1);
           if (replanCount >= MAX_REPLAN_ATTEMPTS) {
             return {
               action: 'FAIL',
@@ -793,11 +792,12 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       case 'RETRY':
         // v2.1.0: Retry step for transient failures (doesn't consume replan budget)
         // Handles both infrastructure failures (v1.1.1) and heartbeat timeouts (v2.1.0)
-        // Uses separate retry budgets managed by FailureClassificationService
+        // Uses DB-backed retry gates on checklist items (restart-safe, no tight-loop retries).
         if (decision.itemId) {
           await this.executeTransientRetry(
             goalRun,
             decision.itemId,
+            decision.retryCategory || 'INFRA',
             decision.retryCount || 1,
             decision.retryDelayMs || INFRA_RETRY_BASE_DELAY_MS,
             decision.reason || 'Transient failure',
@@ -905,6 +905,16 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
 
     if (!item) return;
 
+    // Durable retry gating: if this step was reset to PENDING with a backoff window,
+    // do not re-dispatch until the gate expires (defense-in-depth; makeDecision also gates).
+    const gateUntil = [item.infraRetryAfter, item.heartbeatRetryAfter]
+      .filter((d): d is Date => Boolean(d))
+      .reduce<Date | null>((max, d) => (!max || d > max ? d : max), null);
+
+    if (gateUntil && gateUntil > new Date()) {
+      return;
+    }
+
     // Stark Fix (Atom 2): USER_INPUT_REQUIRED steps are a user-interaction surface, never dispatched.
     // Prefer explicit step.type; fallback only on explicit machine flags (no NL matching).
     const isUserInputRequired =
@@ -988,7 +998,13 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
             id: goalRun.id,
             phase: GoalRunPhase.WAITING_USER_INPUT,
           },
-          data: { phase: GoalRunPhase.EXECUTING },
+          data: {
+            phase: GoalRunPhase.EXECUTING,
+            waitReason: null,
+            waitDetail: Prisma.DbNull,
+            waitStartedAt: null,
+            waitUntil: null,
+          },
         });
 
         if (completed.count > 0 || phaseUpdated.count > 0) {
@@ -1064,7 +1080,18 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
             in: [GoalRunPhase.EXECUTING, GoalRunPhase.CONTROLLING_DESKTOP],
           },
         },
-        data: { phase: GoalRunPhase.WAITING_USER_INPUT },
+        data: {
+          phase: GoalRunPhase.WAITING_USER_INPUT,
+          waitReason: GoalRunWaitReason.USER_INPUT,
+          waitStartedAt: blockedAt,
+          waitUntil: null,
+          waitDetail: {
+            kind: 'USER_PROMPT',
+            promptId: prompt.id,
+            promptKind: prompt.kind,
+            checklistItemId: item.id,
+          } as any,
+        },
       });
 
       // Emit one activity event on the first transition only (prevents 5s loop spam).
@@ -1105,26 +1132,6 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    // Mark item as in progress
-    await this.prisma.checklistItem.update({
-      where: { id: itemId },
-      data: {
-        status: ChecklistItemStatus.IN_PROGRESS,
-        startedAt: new Date(),
-      },
-    });
-
-    // Update phase if desktop is required
-    if (item.requiresDesktop) {
-      await this.goalRunService.updatePhase(goalRun.id, GoalRunPhase.CONTROLLING_DESKTOP);
-    }
-
-    await this.goalRunService.createActivityEvent(goalRun.id, {
-      eventType: 'STEP_STARTED',
-      title: `Starting: ${item.description}`,
-      checklistItemId: itemId,
-    });
-
     try {
       // v1.1.0: Create workflow if not exists (with link-first pattern)
       if (!goalRun.workflowRunId) {
@@ -1137,17 +1144,19 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
 
       if (!workspaceStatus.ready) {
         if (workspaceStatus.waitingForCapacity) {
-          // Capacity issue - don't mark as failed, don't replan
-          // The workspace nextAttemptAt field handles retry timing (v1.5.0)
-          // Activity emission is throttled in ensureWorkspaceReadyForStep
+          // Capacity issue - do not dispatch, do not replan, and do not churn DB state.
+          // Run enters a stable WAITING_CAPACITY phase, while workspace.nextAttemptAt gates retry timing.
 
-          // Mark step as pending again (not in progress, not failed)
-          await this.prisma.checklistItem.update({
-            where: { id: itemId },
-            data: {
-              status: ChecklistItemStatus.PENDING,
-              startedAt: null,
-            },
+          const retryAfterMs = workspaceStatus.retryAfterMs || 30000;
+          const waitUntil = new Date(Date.now() + retryAfterMs);
+
+          await this.goalRunService.updatePhase(goalRun.id, GoalRunPhase.WAITING_CAPACITY, {
+            waitDetail: {
+              kind: 'WORKSPACE_CAPACITY',
+              checklistItemId: item.id,
+              retryAfterMs,
+            } as any,
+            waitUntil,
           });
 
           // v1.5.0: Activity emission throttling - check last activity event for this step
@@ -1177,6 +1186,27 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
         // Non-capacity failure - workspace provisioning truly failed
         throw new Error(workspaceStatus.error || 'Workspace not ready');
       }
+
+      // Workspace is ready - execute the step
+      await this.goalRunService.updatePhase(
+        goalRun.id,
+        item.requiresDesktop ? GoalRunPhase.CONTROLLING_DESKTOP : GoalRunPhase.EXECUTING,
+      );
+
+      // Mark item as in progress only after workspace is ready (prevents churn while waiting for capacity).
+      await this.prisma.checklistItem.update({
+        where: { id: itemId },
+        data: {
+          status: ChecklistItemStatus.IN_PROGRESS,
+          startedAt: new Date(),
+        },
+      });
+
+      await this.goalRunService.createActivityEvent(goalRun.id, {
+        eventType: 'STEP_STARTED',
+        title: `Starting: ${item.description}`,
+        checklistItemId: itemId,
+      });
 
       // Workspace is ready - execute the step
       await this.executeStepViaWorkflow(goalRun, item);
@@ -1300,6 +1330,19 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
         `Workflow ${workflowResult.id} waiting for capacity ` +
         `(retry in ${Math.ceil((provisionResult.retryAfterMs || 30000) / 1000)}s)`
       );
+
+      const retryAfterMs = provisionResult.retryAfterMs || 30000;
+      const waitUntil = new Date(Date.now() + retryAfterMs);
+
+      await this.goalRunService.updatePhase(goalRun.id, GoalRunPhase.WAITING_CAPACITY, {
+        waitDetail: {
+          kind: 'WORKSPACE_CAPACITY',
+          workflowRunId: workflowResult.id,
+          workspaceId: workflowResult.workspaceId,
+          retryAfterMs,
+        } as any,
+        waitUntil,
+      });
 
       // Create activity event for visibility
       await this.goalRunService.createActivityEvent(goalRun.id, {
@@ -1475,11 +1518,12 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     this.logger.log(`Executing replanning phase for goal run ${goalRun.id}: ${reason}`);
 
-    // Increment replan count
-    const currentCount = this.replanCounts.get(goalRun.id) || 0;
-    this.replanCounts.set(goalRun.id, currentCount + 1);
+    // Durable budget: replans = currentPlanVersion - 1 (initial plan is version 1).
+    const currentPlanVersion = goalRun.currentPlanVersion || 0;
+    const currentReplanCount = Math.max(0, currentPlanVersion - 1);
+    const nextReplanAttempt = currentReplanCount + 1;
 
-    if (currentCount + 1 > MAX_REPLAN_ATTEMPTS) {
+    if (nextReplanAttempt > MAX_REPLAN_ATTEMPTS) {
       await this.goalRunService.failGoalRun(
         goalRun.id,
         `Max replan attempts (${MAX_REPLAN_ATTEMPTS}) exceeded. Last reason: ${reason}`,
@@ -1583,12 +1627,12 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
   private async executeTransientRetry(
     goalRun: any,
     itemId: string,
+    retryCategory: 'INFRA' | 'HEARTBEAT',
     retryCount: number,
     retryDelayMs: number,
     reason: string,
   ): Promise<void> {
-    // Detect retry type for proper logging and event tracking
-    const isHeartbeatRetry = reason.toLowerCase().includes('heartbeat');
+    const isHeartbeatRetry = retryCategory === 'HEARTBEAT';
     const retryType = isHeartbeatRetry ? 'Heartbeat' : 'Infrastructure';
 
     this.logger.log(
@@ -1596,11 +1640,7 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       `(delay: ${Math.round(retryDelayMs / 1000)}s): ${reason}`,
     );
 
-    // Update retry tracking (for legacy infra retries; heartbeat uses classification service)
-    if (!isHeartbeatRetry) {
-      this.infraRetryCounts.set(itemId, retryCount);
-      this.infraRetryAfter.set(itemId, Date.now() + retryDelayMs);
-    }
+    const retryAfter = new Date(Date.now() + retryDelayMs);
 
     // Get item details for activity event
     const item = await this.prisma.checklistItem.findUnique({
@@ -1630,8 +1670,13 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
         status: ChecklistItemStatus.PENDING,
         startedAt: null,
         completedAt: null,
+        // Durable retry gating (prevents tight-loop retries even after restart)
+        infraRetryCount: isHeartbeatRetry ? undefined : retryCount,
+        infraRetryAfter: isHeartbeatRetry ? null : retryAfter,
+        heartbeatRetryCount: isHeartbeatRetry ? retryCount : undefined,
+        heartbeatRetryAfter: isHeartbeatRetry ? retryAfter : null,
         // Store retry context in actualOutcome (will be overwritten on next attempt)
-        actualOutcome: `[RETRY:${retryCount}] ${reason} | Context: ${retryContext}`,
+        actualOutcome: `[RETRY:${retryCategory}:${retryCount}] ${reason} | Context: ${retryContext}`,
       },
     });
 
@@ -1683,6 +1728,10 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       },
       data: {
         status: ChecklistItemStatus.BLOCKED,
+        infraRetryCount: 0,
+        infraRetryAfter: null,
+        heartbeatRetryCount: 0,
+        heartbeatRetryAfter: null,
         startedAt: item?.startedAt ?? new Date(),
         completedAt: null,
         actualOutcome: JSON.stringify(
@@ -1704,7 +1753,17 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
           in: [GoalRunPhase.EXECUTING, GoalRunPhase.CONTROLLING_DESKTOP],
         },
       },
-      data: { phase: GoalRunPhase.WAITING_PROVIDER },
+      data: {
+        phase: GoalRunPhase.WAITING_PROVIDER,
+        waitReason: GoalRunWaitReason.PROVIDER,
+        waitStartedAt: new Date(),
+        waitUntil: null,
+        waitDetail: {
+          kind: 'WAITING_PROVIDER',
+          checklistItemId: itemId,
+          reason,
+        } as any,
+      },
     });
 
     if (stepBlocked.count > 0 || phaseUpdated.count > 0) {

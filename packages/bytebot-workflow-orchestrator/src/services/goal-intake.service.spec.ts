@@ -1,5 +1,5 @@
 import { GoalIntakeService } from './goal-intake.service';
-import { GoalRunPhase, GoalSpecStatus, UserPromptKind } from '@prisma/client';
+import { GoalRunPhase, GoalRunWaitReason, GoalSpecStatus, UserPromptKind } from '@prisma/client';
 
 describe('GoalIntakeService GoalSpec gate before planning', () => {
   it('returns ready=true and creates a minimal COMPLETE GoalSpec when none exists', async () => {
@@ -126,7 +126,11 @@ describe('GoalIntakeService GoalSpec gate before planning', () => {
         id: 'gr-1',
         phase: { in: [GoalRunPhase.INITIALIZING, GoalRunPhase.PLANNING, GoalRunPhase.EXECUTING, GoalRunPhase.REPLANNING] },
       },
-      data: { phase: GoalRunPhase.WAITING_USER_INPUT },
+      data: expect.objectContaining({
+        phase: GoalRunPhase.WAITING_USER_INPUT,
+        waitReason: GoalRunWaitReason.USER_INPUT,
+        waitStartedAt: expect.any(Date),
+      }),
     });
     expect(goalRunService.createActivityEvent).toHaveBeenCalledTimes(1);
     expect(outboxService.enqueueOnce).toHaveBeenCalledWith({

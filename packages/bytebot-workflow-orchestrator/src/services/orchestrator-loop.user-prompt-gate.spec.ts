@@ -4,6 +4,7 @@ import {
   ExecutionSurface,
   GoalSpecStatus,
   GoalRunPhase,
+  GoalRunWaitReason,
   StepType,
   UserPromptKind,
 } from '@prisma/client';
@@ -112,7 +113,10 @@ describe('OrchestratorLoopService USER_INPUT_REQUIRED gate', () => {
           in: [GoalRunPhase.EXECUTING, GoalRunPhase.CONTROLLING_DESKTOP],
         },
       },
-      data: { phase: GoalRunPhase.WAITING_USER_INPUT },
+      data: expect.objectContaining({
+        phase: GoalRunPhase.WAITING_USER_INPUT,
+        waitReason: GoalRunWaitReason.USER_INPUT,
+      }),
     });
     expect(goalRunService.createActivityEvent).toHaveBeenCalledWith('gr-1', expect.objectContaining({
       eventType: 'USER_PROMPT_CREATED',

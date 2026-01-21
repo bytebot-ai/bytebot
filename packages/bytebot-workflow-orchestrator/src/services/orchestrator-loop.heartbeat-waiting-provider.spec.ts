@@ -1,5 +1,4 @@
 import { OrchestratorLoopService } from './orchestrator-loop.service';
-import { FailureClassificationService } from './failure-classification.service';
 import { ChecklistItemStatus, GoalRunPhase } from '@prisma/client';
 
 describe('OrchestratorLoopService heartbeat exhaustion → WAITING_PROVIDER', () => {
@@ -15,7 +14,6 @@ describe('OrchestratorLoopService heartbeat exhaustion → WAITING_PROVIDER', ()
     } as any;
 
     const eventEmitter = { emit: jest.fn() } as any;
-    const failureClassificationService = new FailureClassificationService(configService, eventEmitter);
 
     const taskDispatchService = {
       getHeartbeatHealth: jest.fn(() => ({
@@ -43,7 +41,7 @@ describe('OrchestratorLoopService heartbeat exhaustion → WAITING_PROVIDER', ()
       taskDispatchService,
       { isInBackoff: () => false } as any,
       { shouldSkipExecution: () => false } as any,
-      failureClassificationService,
+      {} as any,
       {} as any,
       eventEmitter,
       configService,
@@ -51,25 +49,31 @@ describe('OrchestratorLoopService heartbeat exhaustion → WAITING_PROVIDER', ()
       {} as any,
     );
 
-    const goalRun = {
+    const item = {
+      id: 'ci-1',
+      status: ChecklistItemStatus.IN_PROGRESS,
+      description: 'Desktop step',
+      startedAt: new Date(0),
+      heartbeatRetryCount: 0,
+    };
+
+    const goalRun: any = {
       id: 'gr-1',
       phase: GoalRunPhase.EXECUTING,
+      currentPlanVersion: 1,
       planVersions: [
         {
           checklistItems: [
-            {
-              id: 'ci-1',
-              status: ChecklistItemStatus.IN_PROGRESS,
-              description: 'Desktop step',
-              startedAt: new Date(0),
-            },
+            item,
           ],
         },
       ],
     };
 
     const d1 = await (service as any).makeDecision(goalRun);
+    item.heartbeatRetryCount = 1;
     const d2 = await (service as any).makeDecision(goalRun);
+    item.heartbeatRetryCount = 2;
     const d3 = await (service as any).makeDecision(goalRun);
 
     expect(d1.action).toBe('RETRY');
@@ -82,4 +86,3 @@ describe('OrchestratorLoopService heartbeat exhaustion → WAITING_PROVIDER', ()
     );
   });
 });
-

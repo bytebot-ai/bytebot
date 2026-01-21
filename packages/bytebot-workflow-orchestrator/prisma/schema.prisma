@@ -1272,11 +1272,28 @@ enum GoalRunPhase {
   WAITING_USER_INPUT
   WAITING_APPROVAL
   WAITING_PROVIDER
+  WAITING_CAPACITY
   VERIFYING
   REPLANNING
   COMPLETED
   FAILED
   PAUSED
+
+  @@schema("workflow_orchestrator")
+}
+
+// ============================================================================
+// Goal Run Wait Reason Enum
+// Canonical “why are we waiting?” category (engine-agnostic)
+// ============================================================================
+
+enum GoalRunWaitReason {
+  USER_INPUT
+  APPROVAL
+  PROVIDER
+  CAPACITY
+  POLICY
+  UNKNOWN
 
   @@schema("workflow_orchestrator")
 }
@@ -1487,6 +1504,13 @@ model GoalRun {
   status          GoalRunStatus          @default(PENDING)
   executionEngine GoalRunExecutionEngine @default(LEGACY_DB_LOOP) @map("execution_engine")
 
+  // Canonical wait state (engine-agnostic). Phase is still the durable “what,”
+  // but these fields capture the durable “why” and timing hints.
+  waitReason    GoalRunWaitReason? @map("wait_reason")
+  waitDetail    Json?             @map("wait_detail")
+  waitStartedAt DateTime?         @map("wait_started_at")
+  waitUntil     DateTime?         @map("wait_until")
+
   // Link to execution (GoalRun creates a WorkflowRun for execution)
   workflowRunId String?      @unique @map("workflow_run_id")
   workflowRun   WorkflowRun? @relation(fields: [workflowRunId], references: [id])
@@ -1520,6 +1544,7 @@ model GoalRun {
   @@index([tenantId, status])
   @@index([status])
   @@index([phase])
+  @@index([waitReason])
   @@index([createdAt])
   @@map("goal_runs")
   @@schema("workflow_orchestrator")
@@ -1657,6 +1682,13 @@ model ChecklistItem {
   blockedReason     String?   @map("blocked_reason")
   blockedAt         DateTime? @map("blocked_at")
 
+  // Durable retry gating (restart-safe, multi-replica safe).
+  // Prevents tight-loop retries when a step is reset to PENDING with a backoff delay.
+  infraRetryCount    Int       @default(0) @map("infra_retry_count")
+  infraRetryAfter    DateTime? @map("infra_retry_after")
+  heartbeatRetryCount Int      @default(0) @map("heartbeat_retry_count")
+  heartbeatRetryAfter DateTime? @map("heartbeat_retry_after")
+
   // Link to execution (item may create a WorkflowNode for execution)
   workflowNodeId String? @map("workflow_node_id")
 
@@ -1686,6 +1718,8 @@ model ChecklistItem {
   @@index([planVersionId])
   @@index([planVersionId, order])
   @@index([status])
+  @@index([infraRetryAfter])
+  @@index([heartbeatRetryAfter])
   @@map("checklist_items")
   @@schema("workflow_orchestrator")
 }

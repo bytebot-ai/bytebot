@@ -21,6 +21,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from './prisma.service';
 import { GoalRunPhase, GoalRunStatus } from './goal-run.service';
+import { GoalRunWaitReason, Prisma } from '@prisma/client';
 
 // Maintenance mode states
 export enum MaintenanceState {
@@ -344,7 +345,17 @@ export class MaintenanceModeService implements OnModuleInit {
       try {
         await this.prisma.goalRun.update({
           where: { id: goalRun.id },
-          data: { phase: GoalRunPhase.PAUSED },
+          data: {
+            phase: GoalRunPhase.PAUSED,
+            waitReason: GoalRunWaitReason.POLICY,
+            waitStartedAt: new Date(),
+            waitUntil: null,
+            waitDetail: {
+              kind: 'MAINTENANCE',
+              reason: this.reason || null,
+              initiatedBy: this.initiatedBy || null,
+            } as any,
+          },
         });
         this.pausedByMaintenance.add(goalRun.id);
         pausedCount++;
@@ -409,7 +420,13 @@ export class MaintenanceModeService implements OnModuleInit {
 
           await this.prisma.goalRun.update({
             where: { id: goalRunId },
-            data: { phase: resumePhase },
+            data: {
+              phase: resumePhase,
+              waitReason: null,
+              waitDetail: Prisma.DbNull,
+              waitStartedAt: null,
+              waitUntil: null,
+            },
           });
 
           // Create activity event

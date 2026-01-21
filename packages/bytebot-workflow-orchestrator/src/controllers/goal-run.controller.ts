@@ -211,7 +211,7 @@ export class GoalRunController {
     const goalRun = await this.goalRunService.findByIdWithPlan(id);
 
     // Add loop status
-    const loopStatus = this.orchestratorLoopService.getLoopStatus(id);
+    const loopStatus = await this.orchestratorLoopService.getLoopStatus(id);
 
     return {
       success: true,

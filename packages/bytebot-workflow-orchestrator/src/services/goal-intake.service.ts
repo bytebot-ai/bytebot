@@ -15,7 +15,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createId } from '@paralleldrive/cuid2';
-import { GoalRunPhase, GoalSpecStatus, UserPromptKind } from '@prisma/client';
+import { GoalRunPhase, GoalRunWaitReason, GoalSpecStatus, UserPromptKind } from '@prisma/client';
 import { InjectMetric } from '@willsoto/nestjs-prometheus';
 import type { Counter } from 'prom-client';
 import { PrismaService } from './prisma.service';
@@ -202,7 +202,18 @@ export class GoalIntakeService {
           in: [GoalRunPhase.INITIALIZING, GoalRunPhase.PLANNING, GoalRunPhase.EXECUTING, GoalRunPhase.REPLANNING],
         },
       },
-      data: { phase: GoalRunPhase.WAITING_USER_INPUT },
+      data: {
+        phase: GoalRunPhase.WAITING_USER_INPUT,
+        waitReason: GoalRunWaitReason.USER_INPUT,
+        waitStartedAt: now,
+        waitUntil: null,
+        waitDetail: {
+          kind: 'GOAL_INTAKE',
+          promptId: prompt.id,
+          promptKind: prompt.kind,
+          goalSpecId: goalSpec.id,
+        } as any,
+      },
     });
 
     if (phaseUpdated.count > 0) {
@@ -325,7 +336,19 @@ export class GoalIntakeService {
           in: [GoalRunPhase.INITIALIZING, GoalRunPhase.PLANNING, GoalRunPhase.EXECUTING, GoalRunPhase.REPLANNING],
         },
       },
-      data: { phase: GoalRunPhase.WAITING_USER_INPUT },
+      data: {
+        phase: GoalRunPhase.WAITING_USER_INPUT,
+        waitReason: GoalRunWaitReason.USER_INPUT,
+        waitStartedAt: now,
+        waitUntil: null,
+        waitDetail: {
+          kind: 'GOAL_INTAKE',
+          promptId: prompt.id,
+          promptKind: prompt.kind,
+          goalSpecId: goalSpec.id,
+          source: 'PLANNER_FIRST_STEP_USER_INPUT',
+        } as any,
+      },
     });
 
     if (phaseUpdated.count > 0) {
