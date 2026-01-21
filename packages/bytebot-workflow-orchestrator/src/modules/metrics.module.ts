@@ -469,6 +469,16 @@ import { PrometheusModule, makeCounterProvider, makeGaugeProvider, makeHistogram
       help: 'Number of goal runs in WAITING_USER_INPUT by age bucket',
       labelNames: ['age_bucket'], // 'lt_5m' | '5m_15m' | '15m_1h' | '1h_24h' | 'gt_24h'
     }),
+    makeGaugeProvider({
+      name: 'runs_stuck_waiting_provider_total',
+      help: 'Number of goal runs in WAITING_PROVIDER by age bucket',
+      labelNames: ['age_bucket'], // 'lt_5m' | '5m_15m' | '15m_1h' | '1h_24h' | 'gt_24h'
+    }),
+    makeGaugeProvider({
+      name: 'runs_stuck_waiting_capacity_total',
+      help: 'Number of goal runs in WAITING_CAPACITY by age bucket',
+      labelNames: ['age_bucket'], // 'lt_5m' | '5m_15m' | '15m_1h' | '1h_24h' | 'gt_24h'
+    }),
 
     // Gauge: RESOLVED prompts without durable resume acknowledgement
     makeGaugeProvider({
@@ -508,6 +518,8 @@ import { PrometheusModule, makeCounterProvider, makeGaugeProvider, makeHistogram
     'PROM_METRIC_RESUME_UPDATE_SUCCESS_TOTAL',
     'PROM_METRIC_RESUME_UPDATE_FAILED_TOTAL',
     'PROM_METRIC_RUNS_STUCK_WAITING_USER_INPUT_TOTAL',
+    'PROM_METRIC_RUNS_STUCK_WAITING_PROVIDER_TOTAL',
+    'PROM_METRIC_RUNS_STUCK_WAITING_CAPACITY_TOTAL',
     'PROM_METRIC_PROMPTS_RESOLVED_WITHOUT_RESUME_ACK_TOTAL',
 
     'PROM_METRIC_TEMPORAL_CAPABILITY_PROBE_OK',

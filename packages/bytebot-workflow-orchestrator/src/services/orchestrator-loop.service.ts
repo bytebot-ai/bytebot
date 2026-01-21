@@ -537,6 +537,17 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       case GoalRunPhase.EXECUTING:
       case GoalRunPhase.CONTROLLING_DESKTOP:
       case GoalRunPhase.WAITING_CAPACITY:
+        // v2.2.2: Quiet WAITING_CAPACITY
+        // If we already have a durable waitUntil in the future, do not churn:
+        // - do not call workspace provisioning APIs
+        // - do not update goal_runs row every tick
+        if (goalRun.phase === GoalRunPhase.WAITING_CAPACITY) {
+          const waitUntil: Date | null = (goalRun as any).waitUntil ?? null;
+          if (waitUntil && waitUntil > new Date()) {
+            return { action: 'CONTINUE' };
+          }
+        }
+
         // Find next item to execute
         const pendingItem = items.find(
           (item: any) => item.status === ChecklistItemStatus.PENDING,
@@ -1148,16 +1159,28 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
           // Run enters a stable WAITING_CAPACITY phase, while workspace.nextAttemptAt gates retry timing.
 
           const retryAfterMs = workspaceStatus.retryAfterMs || 30000;
-          const waitUntil = new Date(Date.now() + retryAfterMs);
+          const waitUntil = workspaceStatus.waitUntil ?? new Date(Date.now() + retryAfterMs);
 
-          await this.goalRunService.updatePhase(goalRun.id, GoalRunPhase.WAITING_CAPACITY, {
-            waitDetail: {
-              kind: 'WORKSPACE_CAPACITY',
-              checklistItemId: item.id,
-              retryAfterMs,
-            } as any,
-            waitUntil,
-          });
+          // v2.2.2: Do not update the goal_run row every loop tick.
+          // Only write when:
+          // - we are entering WAITING_CAPACITY, OR
+          // - we are extending waitUntil (new backoff window).
+          const currentWaitUntil: Date | null = (goalRun as any).waitUntil ?? null;
+          const shouldUpdateWaitUntil =
+            goalRun.phase !== GoalRunPhase.WAITING_CAPACITY ||
+            !currentWaitUntil ||
+            waitUntil.getTime() > currentWaitUntil.getTime() + 1000;
+
+          if (shouldUpdateWaitUntil) {
+            await this.goalRunService.updatePhase(goalRun.id, GoalRunPhase.WAITING_CAPACITY, {
+              waitDetail: {
+                kind: 'WORKSPACE_CAPACITY',
+                checklistItemId: item.id,
+                retryAfterMs,
+              } as any,
+              waitUntil,
+            });
+          }
 
           // v1.5.0: Activity emission throttling - check last activity event for this step
           const recentActivity = await this.prisma.activityEvent.findFirst({
@@ -1332,7 +1355,15 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       );
 
       const retryAfterMs = provisionResult.retryAfterMs || 30000;
-      const waitUntil = new Date(Date.now() + retryAfterMs);
+      const waitUntil =
+        workflowResult.workspaceId
+          ? (
+              await this.prisma.workspace.findUnique({
+                where: { id: workflowResult.workspaceId },
+                select: { nextAttemptAt: true },
+              })
+            )?.nextAttemptAt ?? new Date(Date.now() + retryAfterMs)
+          : new Date(Date.now() + retryAfterMs);
 
       await this.goalRunService.updatePhase(goalRun.id, GoalRunPhase.WAITING_CAPACITY, {
         waitDetail: {
@@ -1369,15 +1400,16 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
    * 2. If WAITING_FOR_CAPACITY with nextAttemptAt in future, skip without calling API
    * 3. If FAILED, return error
    */
-  private async ensureWorkspaceReadyForStep(goalRun: any): Promise<{
-    ready: boolean;
-    waitingForCapacity: boolean;
-    retryAfterMs?: number;
-    error?: string;
-  }> {
-    if (!goalRun.workflowRunId) {
-      return { ready: false, waitingForCapacity: false, error: 'No workflow linked' };
-    }
+	  private async ensureWorkspaceReadyForStep(goalRun: any): Promise<{
+	    ready: boolean;
+	    waitingForCapacity: boolean;
+	    retryAfterMs?: number;
+	    waitUntil?: Date;
+	    error?: string;
+	  }> {
+	    if (!goalRun.workflowRunId) {
+	      return { ready: false, waitingForCapacity: false, error: 'No workflow linked' };
+	    }
 
     // v1.5.0: Check workspace nextAttemptAt BEFORE calling ensureWorkspaceProvisioned
     // This prevents the tight loop bug where we call the API every second
@@ -1386,15 +1418,15 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       include: { workspace: true },
     });
 
-    if (workflow?.workspace) {
-      const workspace = workflow.workspace;
-      const nextAttemptAt = (workspace as any).nextAttemptAt;
-      const lastActivityEmittedAt = (workspace as any).lastActivityEmittedAt;
+	    if (workflow?.workspace) {
+	      const workspace = workflow.workspace;
+	      const nextAttemptAt = (workspace as any).nextAttemptAt;
+	      const lastActivityEmittedAt = (workspace as any).lastActivityEmittedAt;
 
-      // If workspace is waiting for capacity and nextAttemptAt is in the future, skip
-      if (
-        workspace.status === WorkspaceProvisioningStatus.WAITING_FOR_CAPACITY &&
-        nextAttemptAt &&
+	      // If workspace is waiting for capacity and nextAttemptAt is in the future, skip
+	      if (
+	        workspace.status === WorkspaceProvisioningStatus.WAITING_FOR_CAPACITY &&
+	        nextAttemptAt &&
         new Date(nextAttemptAt) > new Date()
       ) {
         const retryAfterMs = new Date(nextAttemptAt).getTime() - Date.now();
@@ -1415,12 +1447,13 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
           });
         }
 
-        return {
-          ready: false,
-          waitingForCapacity: true,
-          retryAfterMs,
-        };
-      }
+	        return {
+	          ready: false,
+	          waitingForCapacity: true,
+	          retryAfterMs,
+	          waitUntil: new Date(nextAttemptAt),
+	        };
+	      }
 
       // If workspace is already READY, return success without calling API
       if (workspace.status === WorkspaceProvisioningStatus.READY) {
@@ -1439,13 +1472,29 @@ export class OrchestratorLoopService implements OnModuleInit, OnModuleDestroy {
       return { ready: true, waitingForCapacity: false };
     }
 
-    if (provisionResult.status === WorkspaceProvisioningStatus.WAITING_FOR_CAPACITY) {
-      return {
-        ready: false,
-        waitingForCapacity: true,
-        retryAfterMs: provisionResult.retryAfterMs,
-      };
-    }
+	    if (provisionResult.status === WorkspaceProvisioningStatus.WAITING_FOR_CAPACITY) {
+	      let waitUntil: Date | undefined;
+	      try {
+	        if (workflow?.workspace?.id) {
+	          const refreshed = await this.prisma.workspace.findUnique({
+	            where: { id: workflow.workspace.id },
+	            select: { nextAttemptAt: true },
+	          });
+	          if (refreshed?.nextAttemptAt) {
+	            waitUntil = refreshed.nextAttemptAt;
+	          }
+	        }
+	      } catch (error: any) {
+	        // best-effort: waitUntil can be derived from retryAfterMs below
+	      }
+
+	      return {
+	        ready: false,
+	        waitingForCapacity: true,
+	        retryAfterMs: provisionResult.retryAfterMs,
+	        waitUntil: waitUntil ?? new Date(Date.now() + (provisionResult.retryAfterMs || 30000)),
+	      };
+	    }
 
     return {
       ready: false,
