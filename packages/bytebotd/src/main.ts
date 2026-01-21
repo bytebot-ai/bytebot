@@ -25,7 +25,7 @@ async function bootstrap() {
     pathRewrite: { '^/websockify': '/' },
   });
   app.use('/websockify', express.raw({ type: '*/*' }), wsProxy);
-  const server = await app.listen(9990);
+  const server = await app.listen(process.env.PORT ?? 9990);
 
   // Selective upgrade routing
   server.on('upgrade', (req, socket, head) => {

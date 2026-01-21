@@ -1,0 +1,22 @@
+# Railway Deployment Dockerfile for bytebot-agent
+# Build context: repository root
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy shared package
+COPY packages/shared ./shared
+
+# Copy agent package
+COPY packages/bytebot-agent ./bytebot-agent
+
+WORKDIR /app/bytebot-agent
+
+# Install dependencies
+RUN npm install
+
+# Build the application
+RUN npm run build
+
+# Start the application
+CMD ["npm", "run", "start:prod"]

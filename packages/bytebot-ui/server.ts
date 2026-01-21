@@ -9,7 +9,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const dev = process.env.NODE_ENV !== "production";
-const hostname = process.env.HOSTNAME || "localhost";
+// In production, bind to 0.0.0.0 to accept connections from load balancers (Railway, etc.)
+const hostname = process.env.HOSTNAME || (dev ? "localhost" : "0.0.0.0");
 const port = parseInt(process.env.PORT || "9992", 10);
 
 // Backend URLs

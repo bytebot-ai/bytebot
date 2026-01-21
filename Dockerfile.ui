@@ -1,0 +1,29 @@
+# Railway Deployment Dockerfile for bytebot-ui
+# Build context: repository root
+FROM node:20-alpine
+
+# Build arguments for Next.js
+ARG BYTEBOT_AGENT_BASE_URL
+ARG BYTEBOT_DESKTOP_VNC_URL
+
+ENV BYTEBOT_AGENT_BASE_URL=${BYTEBOT_AGENT_BASE_URL}
+ENV BYTEBOT_DESKTOP_VNC_URL=${BYTEBOT_DESKTOP_VNC_URL}
+
+WORKDIR /app
+
+# Copy shared package
+COPY packages/shared ./shared
+
+# Copy UI package
+COPY packages/bytebot-ui ./bytebot-ui
+
+WORKDIR /app/bytebot-ui
+
+# Install dependencies
+RUN npm install
+
+# Build the application
+RUN npm run build
+
+# Start the application
+CMD ["npm", "run", "start"]

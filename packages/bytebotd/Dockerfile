@@ -174,8 +174,10 @@ RUN apt-get update && \
         git build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-COPY ./shared/ /bytebot/shared/
-COPY ./bytebotd/ /bytebot/bytebotd/
+# Copy app source from repository root
+# Note: Build context is the repository root for Railway
+COPY packages/shared /bytebot/shared/
+COPY packages/bytebotd /bytebot/bytebotd/
 WORKDIR /bytebot/bytebotd
 RUN npm install --build-from-source
 RUN npm rebuild uiohook-napi --build-from-source
