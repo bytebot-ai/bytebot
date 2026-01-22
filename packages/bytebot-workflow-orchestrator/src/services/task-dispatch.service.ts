@@ -49,9 +49,9 @@ import { hasDesktopExecutionTool } from '../contracts/planner-tools';
 // - gpt-oss-120b is running (1/1 replicas) with 131K context window
 // - 120B parameter model provides superior reasoning for browser automation
 //
-// Routes tasks to appropriate in-house models based on execution surface:
+// Routes tasks to appropriate in-house/external models based on execution surface:
 // - Browser tasks (requiresDesktop: false) → gpt-oss-120b (high-capability reasoning)
-// - Desktop tasks (requiresDesktop: true) → desktop-vision (vision-capable model group with fallbacks)
+// - Desktop tasks (requiresDesktop: true) → claude-sonnet-4-5 (vision-capable model)
 // - Fallback → claude-sonnet-4-5 (external API for complex reasoning)
 //
 // Model configuration for bytebot-agent's task schema
@@ -63,18 +63,18 @@ const BROWSER_TASK_MODEL = {
 };
 
 const DESKTOP_TASK_MODEL = {
-  // IMPORTANT: Use the model group alias (not a single backend) to ensure fallbacks are always enabled.
-  // See: docs/bytebot/contracts/VISION_MODEL_GROUPS.md
-  name: 'desktop-vision',
-  title: 'desktop-vision',
+  // Phase 15: Switch desktop execution to Sonnet 4.5 for reliability.
+  // Note: Proxy layer treats claude-sonnet-4-5 as a desktop-vision model for endpoint ordering + no-cache.
+  name: 'claude-sonnet-4-5',
+  title: 'claude-sonnet-4-5',
   provider: 'proxy',
-  contextWindow: 32000,
+  contextWindow: 128000,
 };
 
 // Fallback model for tasks that don't specify execution surface
 // or when in-house models fail
 const FALLBACK_TASK_MODEL = {
-  name: 'anthropic/claude-sonnet-4-5-20250929',
+  name: 'claude-sonnet-4-5',
   title: 'claude-sonnet-4-5',
   provider: 'proxy',
   contextWindow: 128000,
@@ -335,7 +335,7 @@ export class TaskDispatchService implements OnModuleInit {
    */
   private selectModelForTask(requiresDesktop?: boolean): typeof BROWSER_TASK_MODEL {
     if (requiresDesktop === true) {
-      this.logger.debug('Selected DESKTOP_TASK_MODEL (desktop-vision) for desktop task');
+      this.logger.debug('Selected DESKTOP_TASK_MODEL (claude-sonnet-4-5) for desktop task');
       return DESKTOP_TASK_MODEL;
     }
 

@@ -13,7 +13,7 @@
  *
  * Model Flow (Phase 13):
  * - Planning (planGoal, refinePlan): Uses PLANNING_MODEL (default: gpt-oss-120b)
- * - Execution (via activities): Uses EXECUTION_MODEL (default: qwen3-vl-32b when available)
+ * - Execution (via activities): Uses EXECUTION_MODEL (default: claude-sonnet-4-5)
  * - Fallback: Uses FALLBACK_MODEL (default: claude-sonnet-4-5 - verified in LiteLLM)
  *
  * Agent Paradigm (Phase 13.3):
@@ -57,10 +57,10 @@ const LLM_API_KEY = process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY ?? '';
 const PLANNING_TIMEOUT_MS = parseInt(process.env.PLANNING_TIMEOUT_MS ?? '120000', 10);
 
 // Phase 13: In-house model configuration with proper fallback
-// Use gpt-oss-120b for planning (oversight), qwen3-vl-32b for execution (when available)
+// Use gpt-oss-120b for planning (oversight), claude-sonnet-4-5 for execution
 // Fallback uses claude-sonnet-4-5 which is configured in LiteLLM
 const PLANNING_MODEL = process.env.PLANNING_MODEL ?? 'gpt-oss-120b';
-const EXECUTION_MODEL = process.env.EXECUTION_MODEL ?? 'qwen3-vl-32b';
+const EXECUTION_MODEL = process.env.EXECUTION_MODEL ?? 'claude-sonnet-4-5';
 // Phase 13: Fixed fallback model - gpt-4 was not in LiteLLM config
 // Using claude-sonnet-4-5 as fallback (reliable, available in LiteLLM)
 const FALLBACK_MODEL = process.env.FALLBACK_MODEL ?? 'claude-sonnet-4-5';

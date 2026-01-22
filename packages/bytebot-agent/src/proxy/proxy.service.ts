@@ -325,8 +325,12 @@ export class ProxyService implements BytebotAgentService {
     const trimmed = (model || '').trim();
     return (
       trimmed === 'desktop-vision' ||
+      trimmed === 'claude-sonnet-4-5' ||
+      trimmed === 'claude-opus-4-5' ||
       trimmed === 'qwen3-vl-32b' ||
-      trimmed.endsWith('/qwen3-vl-32b')
+      trimmed.endsWith('/qwen3-vl-32b') ||
+      trimmed.endsWith('/claude-sonnet-4-5-20250929') ||
+      trimmed.endsWith('/claude-opus-4-5-20251101')
     );
   }
 

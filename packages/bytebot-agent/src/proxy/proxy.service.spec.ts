@@ -252,6 +252,77 @@ describe('ProxyService endpoint failover', () => {
     expect(localCreate).toHaveBeenCalledTimes(0);
   });
 
+  it('treats claude-sonnet-4-5 as desktop-vision for endpoint ordering', async () => {
+    const eventEmitter = { emit: jest.fn() };
+    const llmResilienceService = makeResilience(eventEmitter);
+
+    const configService = {
+      get: jest.fn((key: string) => {
+        const map: Record<string, string> = {
+          BYTEBOT_LLM_PROXY_URL: 'http://local-proxy:4000',
+          BYTEBOT_LLM_PROXY_ENDPOINTS:
+            'http://local-proxy:4000,http://global-proxy:4000',
+          // Desktop-vision ordering is global-first
+          BYTEBOT_LLM_PROXY_DESKTOP_VISION_ENDPOINTS:
+            'http://global-proxy:4000,http://local-proxy:4000',
+          BYTEBOT_LLM_PROXY_API_KEY: 'dummy',
+          BYTEBOT_LLM_PROXY_ENDPOINT_PREFLIGHT_ENABLED: 'false',
+        };
+        return map[key] ?? '';
+      }),
+    } as any;
+
+    const localCreate = jest.fn(async () => {
+      const error = new Error('connect ECONNREFUSED 10.0.0.1:4000');
+      (error as any).code = 'ECONNREFUSED';
+      throw error;
+    });
+    const globalCreate = jest.fn(async () => {
+      return {
+        model: 'claude-sonnet-4-5',
+        choices: [{ message: { content: 'ok' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      };
+    });
+
+    class TestProxyService extends ProxyService {
+      protected override createOpenAIClient(baseURL: string): any {
+        if (baseURL.includes('local-proxy')) {
+          return { chat: { completions: { create: localCreate } } };
+        }
+        return { chat: { completions: { create: globalCreate } } };
+      }
+    }
+
+    const service = new TestProxyService(
+      configService,
+      llmResilienceService,
+      eventEmitter as any,
+    );
+
+    const messages = [
+      {
+        id: 'm1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        taskId: 't1',
+        summaryId: null,
+        role: Role.USER,
+        content: [{ type: MessageContentType.Text, text: 'hello' }],
+      },
+    ] as any;
+
+    await service.generateMessage(
+      'system',
+      messages,
+      'claude-sonnet-4-5',
+      { useTools: false },
+    );
+
+    expect(globalCreate).toHaveBeenCalledTimes(1);
+    expect(localCreate).toHaveBeenCalledTimes(0);
+  });
+
   it('disables LiteLLM caching for desktop-vision model requests', async () => {
     const eventEmitter = { emit: jest.fn() };
     const llmResilienceService = makeResilience(eventEmitter);
@@ -303,6 +374,64 @@ describe('ProxyService endpoint failover', () => {
     ] as any;
 
     await service.generateMessage('system', messages, 'openai/qwen3-vl-32b', {
+      useTools: false,
+    });
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0].cache).toEqual({ 'no-cache': true });
+  });
+
+  it('disables LiteLLM caching for claude-sonnet-4-5 desktop-vision requests', async () => {
+    const eventEmitter = { emit: jest.fn() };
+    const llmResilienceService = makeResilience(eventEmitter);
+
+    const configService = {
+      get: jest.fn((key: string) => {
+        const map: Record<string, string> = {
+          BYTEBOT_LLM_PROXY_URL: 'http://proxy:4000',
+          BYTEBOT_LLM_PROXY_ENDPOINTS: 'http://proxy:4000',
+          BYTEBOT_LLM_PROXY_DESKTOP_VISION_ENDPOINTS: 'http://proxy:4000',
+          BYTEBOT_LLM_PROXY_API_KEY: 'dummy',
+          BYTEBOT_LLM_PROXY_ENDPOINT_PREFLIGHT_ENABLED: 'false',
+        };
+        return map[key] ?? '';
+      }),
+    } as any;
+
+    const create = jest.fn(async (request: any) => {
+      return {
+        model: 'claude-sonnet-4-5',
+        choices: [{ message: { content: 'ok' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        __request: request,
+      };
+    });
+
+    class TestProxyService extends ProxyService {
+      protected override createOpenAIClient(): any {
+        return { chat: { completions: { create } } };
+      }
+    }
+
+    const service = new TestProxyService(
+      configService,
+      llmResilienceService,
+      eventEmitter as any,
+    );
+
+    const messages = [
+      {
+        id: 'm1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        taskId: 't1',
+        summaryId: null,
+        role: Role.USER,
+        content: [{ type: MessageContentType.Text, text: 'hello' }],
+      },
+    ] as any;
+
+    await service.generateMessage('system', messages, 'claude-sonnet-4-5', {
       useTools: false,
     });
 
