@@ -474,6 +474,7 @@ export class InternalController {
 
       const promptEligibleNeedsHelpCodes = new Set<string>([
         // External input / takeover only. Strategy and repair MUST NOT land here.
+        'DESKTOP_TAKEOVER_REQUIRED',
         'DISPATCHED_USER_PROMPT_STEP',
         'UI_BLOCKED_SIGNIN',
         'UI_BLOCKED_POPUP',

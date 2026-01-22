@@ -37,10 +37,18 @@ import {
   SUMMARIZATION_SYSTEM_PROMPT,
 } from './agent.constants';
 import { SummariesService } from '../summaries/summaries.service';
-import { handleComputerToolUse, ActionContext, ActionResult, DesktopRequiredError } from './agent.computer-use';
+import {
+  handleComputerToolUse,
+  ActionContext,
+  ActionResult,
+  DesktopRequiredError,
+} from './agent.computer-use';
 import { ProxyService } from '../proxy/proxy.service';
 import { TaskControllerService } from '../task-controller/task-controller.service';
-import { ActionLoggingService, ActionLogEntry } from '../action-logging/action-logging.service';
+import {
+  ActionLoggingService,
+  ActionLogEntry,
+} from '../action-logging/action-logging.service';
 import {
   validateMessageHistory,
   formatValidationError,
@@ -58,13 +66,26 @@ import { buildNeedsHelpResult, parseNeedsHelpErrorCode } from './needs-help';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   DESKTOP_MAX_ACTIONS_WITHOUT_OBSERVATION,
+  DESKTOP_LOOP_COORDINATE_BUCKET_PX,
   DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING,
+  DESKTOP_LOOP_REPAIR_ATTEMPT2_ENABLED,
+  DESKTOP_LOOP_REPAIR_ATTEMPT2_MIN_CONFIDENCE,
+  DESKTOP_LOOP_REPAIR_ENABLED,
+  DESKTOP_LOOP_REPAIR_EPISODE_MAX_MS,
   DESKTOP_LOOP_REPEAT_THRESHOLD,
   DESKTOP_TOOL_CONTRACT_VIOLATION_LIMIT,
   DesktopLoopDetector,
+  hammingDistanceHex,
   normalizeComputerToolUseBlock,
 } from './agent.desktop-safety';
 import { resetDesktopInput } from './agent.computer-use';
+import {
+  buildUiRepairClassifierMessage,
+  buildUiRepairClassifierSystemPrompt,
+  decodePngDimensionsFromBase64,
+  parseUiRepairCandidate,
+  validateUiRepairCandidate,
+} from './agent.desktop-repair';
 
 const DESKTOP_OBSERVATION_REQUIRED_TOOLS = new Set([
   'computer_move_mouse',
@@ -81,6 +102,16 @@ const DESKTOP_OBSERVATION_REQUIRED_TOOLS = new Set([
   'computer_application',
 ]);
 
+type DesktopUiRepairEpisode = {
+  episodeId: number;
+  startedAtMs: number;
+  anchorHash: string | null;
+  escUsed: boolean;
+  closeClickUsed: boolean;
+  progressCandidateHash: string | null;
+  progressCandidateCount: number;
+};
+
 @Injectable()
 export class AgentProcessor {
   private readonly logger = new Logger(AgentProcessor.name);
@@ -93,10 +124,23 @@ export class AgentProcessor {
   private desktopLoopDetector = new DesktopLoopDetector();
   private desktopToolContractViolations = 0;
   private desktopActionsWithoutObservation = 0;
+  private lastScreenshotHash: string | null = null;
+  private blockedClickBuckets = new Map<
+    string,
+    { sinceHash: string; blockedAtMs: number; count: number }
+  >();
   private pendingForcedScreenshot = false;
   private pendingForcedScreenshotReason: 'actions_budget' | null = null;
-  private pendingDesktopNeedsHelp: ReturnType<typeof buildNeedsHelpResult> | null =
-    null;
+  private pendingDesktopRepairTrigger: {
+    trigger: 'loop' | 'blocked_click';
+    details?: Record<string, unknown>;
+  } | null = null;
+  private desktopUiRepairEpisodeSeq = 0;
+  private desktopUiRepairEpisode: DesktopUiRepairEpisode | null = null;
+  private desktopUiRepairInProgress = false;
+  private pendingDesktopNeedsHelp: ReturnType<
+    typeof buildNeedsHelpResult
+  > | null = null;
   // v2.2.7: Mutex to prevent concurrent iteration execution
   // This prevents race conditions where multiple LLM calls could be made simultaneously
   // See: 2025-12-09-race-condition-duplicate-llm-calls-fix.md
@@ -285,7 +329,9 @@ export class AgentProcessor {
     }
 
     return this.iterationMutex.runExclusive(async () => {
-      this.logger.debug(`[${iterationId}] Starting iteration for task ${taskId}`);
+      this.logger.debug(
+        `[${iterationId}] Starting iteration for task ${taskId}`,
+      );
 
       try {
         const task: Task = await this.tasksService.findById(taskId);
@@ -300,7 +346,9 @@ export class AgentProcessor {
           try {
             await this.actionLoggingService.flushActions(taskId);
           } catch (error: any) {
-            this.logger.warn(`Failed to flush action logs for ${taskId}: ${error.message}`);
+            this.logger.warn(
+              `Failed to flush action logs for ${taskId}: ${error.message}`,
+            );
           }
 
           this.isProcessing = false;
@@ -455,7 +503,8 @@ export class AgentProcessor {
             status: TaskStatus.NEEDS_HELP,
             result: buildNeedsHelpResult({
               errorCode: 'LLM_EMPTY_RESPONSE',
-              message: 'Task received no content blocks from LLM (empty response).',
+              message:
+                'Task received no content blocks from LLM (empty response).',
               details: {
                 provider: model.provider,
                 model: model.name,
@@ -546,12 +595,14 @@ export class AgentProcessor {
           `Token usage for task ${taskId}: ${agentResponse.tokenUsage.totalTokens}/${contextWindow} (${Math.round((agentResponse.tokenUsage.totalTokens / contextWindow) * 100)}%)`,
         );
 
-        const generatedToolResults: ToolResultContentBlock[] = [];
+        const generatedToolResults: MessageContentBlock[] = [];
 
         let setTaskStatusToolUseBlock: SetTaskStatusToolUseBlock | null = null;
 
         // v2.3.0 M4: Check if this response contains desktop tool use blocks
-        const hasDesktopToolUse = messageContentBlocks.some(isComputerToolUseContentBlock);
+        const hasDesktopToolUse = messageContentBlocks.some(
+          isComputerToolUseContentBlock,
+        );
 
         // Text-only means text-only: never wait for/acquire a desktop when requiresDesktop=false or surface=TEXT_ONLY.
         const acquireDesktop = shouldAcquireDesktop({
@@ -598,16 +649,28 @@ export class AgentProcessor {
         if (acquireDesktop) {
           if (this.cachedDesktopUrl) {
             desktopUrl = this.cachedDesktopUrl;
-            this.logger.debug(`Using cached desktop URL for task ${taskId}: ${desktopUrl}`);
-          } else if (workspaceId && this.workspaceService.isWorkspaceEnabled()) {
+            this.logger.debug(
+              `Using cached desktop URL for task ${taskId}: ${desktopUrl}`,
+            );
+          } else if (
+            workspaceId &&
+            this.workspaceService.isWorkspaceEnabled()
+          ) {
             // Product 2: Workflow with persistent workspace
             try {
-              this.logger.log(`Waiting for workspace ${workspaceId} to be ready for task ${taskId}...`);
-              desktopUrl = await this.workspaceService.waitForWorkspaceReady(workspaceId, {
-                timeoutMs: 120000, // 2 minute timeout (includes wake time from hibernation)
-              });
+              this.logger.log(
+                `Waiting for workspace ${workspaceId} to be ready for task ${taskId}...`,
+              );
+              desktopUrl = await this.workspaceService.waitForWorkspaceReady(
+                workspaceId,
+                {
+                  timeoutMs: 120000, // 2 minute timeout (includes wake time from hibernation)
+                },
+              );
               this.cachedDesktopUrl = desktopUrl;
-              this.logger.log(`Workspace ${workspaceId} ready for task ${taskId}: ${desktopUrl}`);
+              this.logger.log(
+                `Workspace ${workspaceId} ready for task ${taskId}: ${desktopUrl}`,
+              );
             } catch (error: any) {
               this.logger.error(
                 `Failed to get workspace ${workspaceId} for task ${taskId}: ${error.message}`,
@@ -625,12 +688,19 @@ export class AgentProcessor {
           } else {
             // Product 1: Task with ephemeral desktop (Phase 6)
             try {
-              this.logger.log(`Waiting for desktop to be ready for task ${taskId}...`);
-              desktopUrl = await this.taskControllerService.waitForDesktop(taskId, {
-                timeoutMs: 60000, // 60 second timeout
-              });
+              this.logger.log(
+                `Waiting for desktop to be ready for task ${taskId}...`,
+              );
+              desktopUrl = await this.taskControllerService.waitForDesktop(
+                taskId,
+                {
+                  timeoutMs: 60000, // 60 second timeout
+                },
+              );
               this.cachedDesktopUrl = desktopUrl;
-              this.logger.log(`Desktop ready for task ${taskId}: ${desktopUrl}`);
+              this.logger.log(
+                `Desktop ready for task ${taskId}: ${desktopUrl}`,
+              );
             } catch (error: any) {
               this.logger.error(
                 `Failed to get desktop for task ${taskId}: ${error.message}`,
@@ -675,21 +745,27 @@ export class AgentProcessor {
           },
         };
 
-        const needsWorkspaceLock = workspaceId && nodeRunId && hasDesktopToolUse;
+        const needsWorkspaceLock =
+          workspaceId && nodeRunId && hasDesktopToolUse;
         let workspaceLockAcquired = false;
 
         // v2.3.0 M4: Acquire granular workspace lock before desktop tool execution
         // Lock is held only during active desktop tool execution (30-60 seconds)
         if (needsWorkspaceLock) {
-          const lockResult = await this.workspaceService.acquireLock(workspaceId, nodeRunId);
+          const lockResult = await this.workspaceService.acquireLock(
+            workspaceId,
+            nodeRunId,
+          );
           if (!lockResult.acquired) {
             // Lock contention - another node run is using the workspace
             this.logger.warn(
               `Lock contention on workspace ${workspaceId}: ${lockResult.message}. ` +
-              `Retrying after ${lockResult.retryAfterMs || 5000}ms`,
+                `Retrying after ${lockResult.retryAfterMs || 5000}ms`,
             );
             // Wait and retry in next iteration
-            await new Promise((resolve) => setTimeout(resolve, lockResult.retryAfterMs || 5000));
+            await new Promise((resolve) =>
+              setTimeout(resolve, lockResult.retryAfterMs || 5000),
+            );
             // Schedule next iteration to retry
             if (this.isProcessing) {
               this.scheduleNextIteration(taskId);
@@ -697,17 +773,95 @@ export class AgentProcessor {
             return;
           }
           workspaceLockAcquired = true;
-          this.logger.log(`Workspace lock acquired for task ${taskId} (nodeRun: ${nodeRunId})`);
+          this.logger.log(
+            `Workspace lock acquired for task ${taskId} (nodeRun: ${nodeRunId})`,
+          );
         }
 
         try {
+          const handledToolUseIds = new Set<string>();
+          let shortCircuitReason:
+            | 'ui_repair_esc'
+            | 'ui_repair_close_click'
+            | 'takeover_required'
+            | null = null;
+
           for (const block of messageContentBlocks) {
             if (isComputerToolUseContentBlock(block)) {
               const normalized = normalizeComputerToolUseBlock(block);
 
+              // Hard invariant: never keep clicking the same region when it produces no progress.
+              if (
+                normalized.normalizedBlock.name === 'computer_click_mouse' &&
+                desktopUrl &&
+                !this.pendingDesktopNeedsHelp
+              ) {
+                const input = (normalized.normalizedBlock as any).input as
+                  | { coordinates?: { x: number; y: number } }
+                  | undefined;
+                const coords = input?.coordinates;
+                if (
+                  coords &&
+                  typeof coords.x === 'number' &&
+                  typeof coords.y === 'number' &&
+                  Number.isFinite(coords.x) &&
+                  Number.isFinite(coords.y)
+                ) {
+                  const bx = Math.floor(
+                    coords.x / DESKTOP_LOOP_COORDINATE_BUCKET_PX,
+                  );
+                  const by = Math.floor(
+                    coords.y / DESKTOP_LOOP_COORDINATE_BUCKET_PX,
+                  );
+                  const bucketKey = `${bx},${by}`;
+
+                  const blocked = this.blockedClickBuckets.get(bucketKey);
+                  const stillNoProgress =
+                    blocked &&
+                    this.lastScreenshotHash &&
+                    hammingDistanceHex(
+                      blocked.sinceHash,
+                      this.lastScreenshotHash,
+                    ) <= DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING;
+
+                  if (stillNoProgress) {
+                    generatedToolResults.push({
+                      type: MessageContentType.ToolResult,
+                      tool_use_id: block.id,
+                      is_error: true,
+                      content: [
+                        {
+                          type: MessageContentType.Text,
+                          text: '[System] Blocked repeating click in the same UI region with no progress; running the bounded UI repair ladder.',
+                        },
+                      ],
+                    } as any);
+                    handledToolUseIds.add(block.id);
+
+                    const repair = await this.performDesktopUiRepair({
+                      taskId,
+                      desktopUrl,
+                      actionContext,
+                      trigger: 'blocked_click',
+                      triggerDetails: {
+                        bucketKey,
+                        blockedClickCount: blocked.count,
+                      },
+                      service,
+                      model,
+                      generatedToolResults,
+                    });
+
+                    shortCircuitReason = repair.shortCircuitReason;
+                    break;
+                  }
+                }
+              }
+
               if (
                 normalized.rewriteReason === 'non_modifier_down_to_tap' ||
-                normalized.rewriteReason === 'modifier_down_missing_holdms_to_tap'
+                normalized.rewriteReason ===
+                  'modifier_down_missing_holdms_to_tap'
               ) {
                 this.desktopToolContractViolations++;
                 const rewrittenKeys = normalized.rewrittenKeys || [];
@@ -745,6 +899,7 @@ export class AgentProcessor {
                 actionContext,
               );
               generatedToolResults.push(result);
+              handledToolUseIds.add(block.id);
 
               if (
                 this.pendingForcedScreenshot &&
@@ -752,7 +907,8 @@ export class AgentProcessor {
                 desktopUrl &&
                 !this.pendingDesktopNeedsHelp
               ) {
-                const actionsWithoutObservation = this.desktopActionsWithoutObservation;
+                const actionsWithoutObservation =
+                  this.desktopActionsWithoutObservation;
                 this.pendingForcedScreenshot = false;
                 this.pendingForcedScreenshotReason = null;
 
@@ -775,7 +931,10 @@ export class AgentProcessor {
                   : [];
 
                 const images = content.filter(
-                  (c) => c && typeof c === 'object' && c.type === MessageContentType.Image,
+                  (c) =>
+                    c &&
+                    typeof c === 'object' &&
+                    c.type === MessageContentType.Image,
                 );
 
                 if (images.length > 0) {
@@ -788,7 +947,8 @@ export class AgentProcessor {
                   // If we cannot observe, we must stop deterministically (typed interrupt).
                   this.pendingDesktopNeedsHelp = buildNeedsHelpResult({
                     errorCode: 'UI_OBSERVATION_FAILED',
-                    message: 'Forced screenshot failed; cannot safely proceed without observation.',
+                    message:
+                      'Forced screenshot failed; cannot safely proceed without observation.',
                     details: {
                       reason: 'forced_screenshot_failed',
                       actionsWithoutObservation,
@@ -802,6 +962,30 @@ export class AgentProcessor {
                 }
               }
 
+              // Modal-aware bounded self-repair. Runs after we observe a no-progress loop.
+              if (
+                this.pendingDesktopRepairTrigger &&
+                desktopUrl &&
+                !this.pendingDesktopNeedsHelp
+              ) {
+                const trigger = this.pendingDesktopRepairTrigger;
+                this.pendingDesktopRepairTrigger = null;
+
+                const repair = await this.performDesktopUiRepair({
+                  taskId,
+                  desktopUrl,
+                  actionContext,
+                  trigger: trigger.trigger,
+                  triggerDetails: trigger.details,
+                  service,
+                  model,
+                  generatedToolResults,
+                });
+
+                shortCircuitReason = repair.shortCircuitReason;
+                break;
+              }
+
               if (this.pendingDesktopNeedsHelp) {
                 break;
               }
@@ -809,7 +993,8 @@ export class AgentProcessor {
 
             if (isCreateTaskToolUseBlock(block)) {
               const type = block.input.type?.toUpperCase() as TaskType;
-              const priority = block.input.priority?.toUpperCase() as TaskPriority;
+              const priority =
+                block.input.priority?.toUpperCase() as TaskPriority;
 
               await this.tasksService.create({
                 description: block.input.description,
@@ -832,6 +1017,7 @@ export class AgentProcessor {
                   },
                 ],
               });
+              handledToolUseIds.add(block.id);
             }
 
             if (isSetTaskStatusToolUseBlock(block)) {
@@ -848,13 +1034,44 @@ export class AgentProcessor {
                   },
                 ],
               });
+              handledToolUseIds.add(block.id);
+            }
+          }
+
+          if (shortCircuitReason) {
+            // Ensure the assistant's tool-use message is fully acknowledged with tool results.
+            // We intentionally skip remaining tool calls to allow the model to replan using
+            // the latest screenshot after safety repair.
+            for (const block of messageContentBlocks) {
+              if (
+                block &&
+                typeof block === 'object' &&
+                (block as any).type === MessageContentType.ToolUse &&
+                typeof (block as any).id === 'string' &&
+                !handledToolUseIds.has((block as any).id)
+              ) {
+                generatedToolResults.push({
+                  type: MessageContentType.ToolResult,
+                  tool_use_id: (block as any).id,
+                  is_error: true,
+                  content: [
+                    {
+                      type: MessageContentType.Text,
+                      text: `[System] Skipped tool execution due to desktop safety intervention (${shortCircuitReason}). Replan using the latest screenshot.`,
+                    },
+                  ],
+                } as any);
+                handledToolUseIds.add((block as any).id);
+              }
             }
           }
         } finally {
           // v2.3.0 M4: Release workspace lock after desktop tool execution
           if (workspaceLockAcquired && workspaceId && nodeRunId) {
             await this.workspaceService.releaseLock(workspaceId, nodeRunId);
-            this.logger.log(`Workspace lock released for task ${taskId} (nodeRun: ${nodeRunId})`);
+            this.logger.log(
+              `Workspace lock released for task ${taskId} (nodeRun: ${nodeRunId})`,
+            );
           }
         }
 
@@ -910,9 +1127,11 @@ export class AgentProcessor {
               this.taskControllerService.stopHeartbeat(taskId);
               break;
             case 'needs_help':
-              const rawErrorCode = (setTaskStatusToolUseBlock.input as any)?.errorCode;
+              const rawErrorCode = (setTaskStatusToolUseBlock.input as any)
+                ?.errorCode;
               const requestedErrorCode = parseNeedsHelpErrorCode(rawErrorCode);
-              const detailsRaw = (setTaskStatusToolUseBlock.input as any)?.details;
+              const detailsRaw = (setTaskStatusToolUseBlock.input as any)
+                ?.details;
               const details =
                 detailsRaw && typeof detailsRaw === 'object'
                   ? (detailsRaw as Record<string, unknown>)
@@ -939,7 +1158,9 @@ export class AgentProcessor {
                   errorCode,
                   message: setTaskStatusToolUseBlock.input.description,
                   details:
-                    Object.keys(mergedDetails).length > 0 ? mergedDetails : undefined,
+                    Object.keys(mergedDetails).length > 0
+                      ? mergedDetails
+                      : undefined,
                 }),
               });
               // v2.2.5: Clear lease when escalating to user
@@ -957,14 +1178,19 @@ export class AgentProcessor {
         }
       } catch (error: any) {
         if (error?.name === 'BytebotAgentInterrupt') {
-          this.logger.warn(`[${iterationId}] Processing aborted for task ID: ${taskId}`);
+          this.logger.warn(
+            `[${iterationId}] Processing aborted for task ID: ${taskId}`,
+          );
         } else {
           this.logger.error(
             `[${iterationId}] Error during task processing iteration for task ID: ${taskId} - ${error.message}`,
             error.stack,
           );
 
-          const llmErrorType = typeof error?.llmErrorType === 'string' ? error.llmErrorType : undefined;
+          const llmErrorType =
+            typeof error?.llmErrorType === 'string'
+              ? error.llmErrorType
+              : undefined;
           const errorMessage = String(error?.message || 'Unknown error');
 
           // Error taxonomy: connection errors and provider unavailability are INFRA, not semantic.
@@ -995,7 +1221,9 @@ export class AgentProcessor {
             lower.includes('circuit breaker open');
 
           const persistedError =
-            isInfra && !lower.includes('[infra]') ? `[INFRA] ${errorMessage}` : errorMessage;
+            isInfra && !lower.includes('[infra]')
+              ? `[INFRA] ${errorMessage}`
+              : errorMessage;
 
           await this.tasksService.update(taskId, {
             status: TaskStatus.FAILED,
@@ -1003,8 +1231,14 @@ export class AgentProcessor {
             result: {
               errorCategory: isInfra ? 'INFRA' : 'SEMANTIC',
               llmErrorType: llmErrorType || null,
-              attempts: typeof error?.attempts === 'number' ? error.attempts : undefined,
-              durationMs: typeof error?.durationMs === 'number' ? error.durationMs : undefined,
+              attempts:
+                typeof error?.attempts === 'number'
+                  ? error.attempts
+                  : undefined,
+              durationMs:
+                typeof error?.durationMs === 'number'
+                  ? error.durationMs
+                  : undefined,
             },
           });
           // v2.2.5: Clear lease on failure
@@ -1016,8 +1250,418 @@ export class AgentProcessor {
         }
       }
 
-      this.logger.debug(`[${iterationId}] Iteration completed for task ${taskId}`);
+      this.logger.debug(
+        `[${iterationId}] Iteration completed for task ${taskId}`,
+      );
     }); // End of runExclusive
+  }
+
+  private async performDesktopUiRepair(input: {
+    taskId: string;
+    desktopUrl: string;
+    actionContext: ActionContext;
+    trigger: 'loop' | 'blocked_click';
+    triggerDetails?: Record<string, unknown>;
+    service: BytebotAgentService;
+    model: BytebotAgentModel;
+    generatedToolResults: MessageContentBlock[];
+  }): Promise<{
+    shortCircuitReason:
+      | 'ui_repair_esc'
+      | 'ui_repair_close_click'
+      | 'takeover_required';
+  }> {
+    const { desktopUrl, actionContext } = input;
+
+    const now = Date.now();
+
+    const extractBucketKeyFromSignature = (
+      signature?: unknown,
+    ): string | null => {
+      if (typeof signature !== 'string') return null;
+      const match = signature.match(/bucket=([0-9]+,[0-9]+)/);
+      return match ? match[1] : null;
+    };
+
+    const getOrStartEpisode = (): DesktopUiRepairEpisode => {
+      const existing = this.desktopUiRepairEpisode;
+      if (
+        existing &&
+        existing.startedAtMs > 0 &&
+        now - existing.startedAtMs <= DESKTOP_LOOP_REPAIR_EPISODE_MAX_MS
+      ) {
+        return existing;
+      }
+
+      const nextEpisode: DesktopUiRepairEpisode = {
+        episodeId: ++this.desktopUiRepairEpisodeSeq,
+        startedAtMs: now,
+        anchorHash: this.lastScreenshotHash,
+        escUsed: false,
+        closeClickUsed: false,
+        progressCandidateHash: null,
+        progressCandidateCount: 0,
+      };
+      this.desktopUiRepairEpisode = nextEpisode;
+      return nextEpisode;
+    };
+
+    const buildLoopContext = () => {
+      const rule =
+        typeof input.triggerDetails?.rule === 'string'
+          ? input.triggerDetails.rule
+          : null;
+      const signature =
+        typeof input.triggerDetails?.signature === 'string'
+          ? input.triggerDetails.signature
+          : null;
+
+      const bucket =
+        typeof (input.triggerDetails as any)?.bucketKey === 'string'
+          ? String((input.triggerDetails as any).bucketKey)
+          : extractBucketKeyFromSignature(signature);
+
+      return {
+        trigger: input.trigger,
+        rule,
+        bucket,
+      };
+    };
+
+    const takeover = (details: Record<string, unknown>) => {
+      if (!this.pendingDesktopNeedsHelp) {
+        const episode = getOrStartEpisode();
+        const loop = buildLoopContext();
+        const attempt2ErrorRaw =
+          (details as any)?.attempt2 &&
+          typeof (details as any).attempt2 === 'object'
+            ? (details as any).attempt2.error
+            : null;
+        const attempt2Error =
+          typeof attempt2ErrorRaw === 'string' ? attempt2ErrorRaw : null;
+
+        const repair = {
+          attempt1: episode.escUsed
+            ? 'esc'
+            : DESKTOP_LOOP_REPAIR_ENABLED
+              ? 'skipped'
+              : 'disabled',
+          attempt2: attempt2Error
+            ? attempt2Error === 'no_progress_after_click'
+              ? 'failed'
+              : 'invalid'
+            : episode.closeClickUsed
+              ? 'close_click'
+              : DESKTOP_LOOP_REPAIR_ENABLED &&
+                  DESKTOP_LOOP_REPAIR_ATTEMPT2_ENABLED
+                ? 'skipped'
+                : 'disabled',
+        };
+
+        this.pendingDesktopNeedsHelp = buildNeedsHelpResult({
+          errorCode: 'DESKTOP_TAKEOVER_REQUIRED',
+          details: {
+            reason: 'UI_BLOCKED_POPUP',
+            loop,
+            repair,
+            ...details,
+          },
+        });
+        this.eventEmitter.emit('desktop.interrupt', {
+          reasonCode: 'DESKTOP_TAKEOVER_REQUIRED',
+        });
+      }
+      return { shortCircuitReason: 'takeover_required' as const };
+    };
+
+    if (!DESKTOP_LOOP_REPAIR_ENABLED) {
+      return takeover({
+        trigger: input.trigger,
+        triggerDetails: input.triggerDetails,
+        repairEnabled: false,
+        repairAttempt2Enabled: DESKTOP_LOOP_REPAIR_ATTEMPT2_ENABLED,
+      });
+    }
+
+    // Attempt 1: Esc once (tap) then force replan.
+    const episode = getOrStartEpisode();
+
+    if (!episode.escUsed) {
+      const beforeHash = this.lastScreenshotHash;
+      episode.escUsed = true;
+
+      this.desktopUiRepairInProgress = true;
+      this.eventEmitter.emit('desktop.ui_repair.attempt', {
+        attempt: 'esc',
+        trigger: input.trigger,
+      });
+
+      try {
+        const toolUseId = `ui_repair_esc_${Date.now()}`;
+        const escBlock = {
+          type: MessageContentType.ToolUse,
+          id: toolUseId,
+          name: 'computer_type_keys',
+          input: { keys: ['Escape'], delay: 75 },
+        } as any;
+
+        const escResult = await handleComputerToolUse(
+          escBlock,
+          this.logger,
+          actionContext,
+        );
+
+        const content = Array.isArray((escResult as any).content)
+          ? ((escResult as any).content as any[])
+          : [];
+
+        const images = content.filter(
+          (c) =>
+            c && typeof c === 'object' && c.type === MessageContentType.Image,
+        );
+
+        input.generatedToolResults.push({
+          type: MessageContentType.Text,
+          text: '[System] Desktop safety repair: pressed Escape to dismiss a potential modal/popup. Replan from the updated screenshot.',
+        } as any);
+
+        if (images.length > 0) {
+          input.generatedToolResults.push(...(images as any));
+        }
+
+        const afterHash = this.lastScreenshotHash;
+        const dist =
+          beforeHash && afterHash
+            ? hammingDistanceHex(beforeHash, afterHash)
+            : null;
+        const success =
+          typeof dist === 'number' && Number.isFinite(dist)
+            ? dist > DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING
+            : false;
+
+        this.eventEmitter.emit('desktop.ui_repair.result', {
+          attempt: 'esc',
+          outcome: success ? 'success' : 'failure_no_change',
+          trigger: input.trigger,
+        });
+      } finally {
+        this.desktopUiRepairInProgress = false;
+        // Reset loop detector after repair so we don't instantly re-trigger on old history.
+        this.desktopLoopDetector = new DesktopLoopDetector();
+      }
+
+      return { shortCircuitReason: 'ui_repair_esc' };
+    }
+
+    // Attempt 2: single-shot "close/dismiss click" (bounded).
+    if (DESKTOP_LOOP_REPAIR_ATTEMPT2_ENABLED && !episode.closeClickUsed) {
+      episode.closeClickUsed = true;
+      const beforeHash = this.lastScreenshotHash;
+
+      this.desktopUiRepairInProgress = true;
+      this.eventEmitter.emit('desktop.ui_repair.attempt', {
+        attempt: 'close_click',
+        trigger: input.trigger,
+      });
+
+      try {
+        // Capture screenshot for the classifier.
+        const screenshotToolUseId = `ui_repair_shot_${Date.now()}`;
+        const shotBlock = {
+          type: MessageContentType.ToolUse,
+          id: screenshotToolUseId,
+          name: 'computer_screenshot',
+          input: {},
+        } as any;
+
+        const shotResult = await handleComputerToolUse(
+          shotBlock,
+          this.logger,
+          actionContext,
+        );
+
+        const shotContent = Array.isArray((shotResult as any).content)
+          ? ((shotResult as any).content as any[])
+          : [];
+
+        const firstImage = shotContent.find(
+          (c) =>
+            c && typeof c === 'object' && c.type === MessageContentType.Image,
+        );
+
+        const screenshotBase64 =
+          firstImage?.source && typeof firstImage.source.data === 'string'
+            ? (firstImage.source.data as string)
+            : null;
+
+        if (!screenshotBase64) {
+          this.eventEmitter.emit('desktop.ui_repair.result', {
+            attempt: 'close_click',
+            outcome: 'failure_invalid',
+            trigger: input.trigger,
+          });
+          return takeover({
+            trigger: input.trigger,
+            triggerDetails: input.triggerDetails,
+            attempt2: { error: 'screenshot_missing' },
+          });
+        }
+
+        const dims = decodePngDimensionsFromBase64(screenshotBase64);
+        if (!dims) {
+          this.eventEmitter.emit('desktop.ui_repair.result', {
+            attempt: 'close_click',
+            outcome: 'failure_invalid',
+            trigger: input.trigger,
+          });
+          return takeover({
+            trigger: input.trigger,
+            triggerDetails: input.triggerDetails,
+            attempt2: { error: 'screenshot_dimensions_unavailable' },
+          });
+        }
+
+        const classifierSystem = buildUiRepairClassifierSystemPrompt();
+        const classifierMessages = [
+          buildUiRepairClassifierMessage({
+            taskId: input.taskId,
+            screenshotBase64Png: screenshotBase64,
+          }),
+        ];
+
+        const classifierResponse = await input.service.generateMessage(
+          classifierSystem,
+          classifierMessages,
+          input.model.name,
+          { useTools: false, signal: this.abortController?.signal },
+        );
+
+        const textBlocks = classifierResponse.contentBlocks.filter(
+          (b) => b.type === MessageContentType.Text,
+        ) as any[];
+        const combinedText = textBlocks
+          .map((b) => b.text)
+          .join('\n')
+          .trim();
+
+        const parsed = parseUiRepairCandidate(combinedText);
+        if (!parsed.ok) {
+          this.eventEmitter.emit('desktop.ui_repair.result', {
+            attempt: 'close_click',
+            outcome: 'failure_invalid',
+            trigger: input.trigger,
+          });
+          return takeover({
+            trigger: input.trigger,
+            triggerDetails: input.triggerDetails,
+            attempt2: {
+              error: 'classifier_parse_failed',
+              detail: parsed.error,
+            },
+          });
+        }
+
+        const validation = validateUiRepairCandidate({
+          candidate: parsed.candidate,
+          dimensions: dims,
+          minConfidence: DESKTOP_LOOP_REPAIR_ATTEMPT2_MIN_CONFIDENCE,
+        });
+
+        if (!validation.ok) {
+          this.eventEmitter.emit('desktop.ui_repair.result', {
+            attempt: 'close_click',
+            outcome: 'failure_invalid',
+            trigger: input.trigger,
+          });
+          return takeover({
+            trigger: input.trigger,
+            triggerDetails: input.triggerDetails,
+            attempt2: { error: 'candidate_rejected', detail: validation.error },
+          });
+        }
+
+        // Execute exactly one click at the suggested point.
+        const clickToolUseId = `ui_repair_click_${Date.now()}`;
+        const clickBlock = {
+          type: MessageContentType.ToolUse,
+          id: clickToolUseId,
+          name: 'computer_click_mouse',
+          input: {
+            coordinates: {
+              x: Math.round(parsed.candidate.x),
+              y: Math.round(parsed.candidate.y),
+            },
+            button: 'left',
+            clickCount: 1,
+          },
+        } as any;
+
+        const clickResult = await handleComputerToolUse(
+          clickBlock,
+          this.logger,
+          actionContext,
+        );
+
+        const clickContent = Array.isArray((clickResult as any).content)
+          ? ((clickResult as any).content as any[])
+          : [];
+
+        const clickImages = clickContent.filter(
+          (c) =>
+            c && typeof c === 'object' && c.type === MessageContentType.Image,
+        );
+
+        input.generatedToolResults.push({
+          type: MessageContentType.Text,
+          text: '[System] Desktop safety repair: attempted a single close/dismiss click for a blocking overlay. Replan from the updated screenshot.',
+        } as any);
+
+        if (clickImages.length > 0) {
+          input.generatedToolResults.push(...(clickImages as any));
+        }
+
+        const afterHash = this.lastScreenshotHash;
+        const dist =
+          beforeHash && afterHash
+            ? hammingDistanceHex(beforeHash, afterHash)
+            : null;
+        const success =
+          typeof dist === 'number' && Number.isFinite(dist)
+            ? dist > DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING
+            : false;
+
+        this.eventEmitter.emit('desktop.ui_repair.result', {
+          attempt: 'close_click',
+          outcome: success ? 'success' : 'failure_no_change',
+          trigger: input.trigger,
+        });
+
+        if (!success) {
+          return takeover({
+            trigger: input.trigger,
+            triggerDetails: input.triggerDetails,
+            attempt2: {
+              error: 'no_progress_after_click',
+              rationale: parsed.candidate.rationaleCode,
+            },
+          });
+        }
+      } finally {
+        this.desktopUiRepairInProgress = false;
+        this.desktopLoopDetector = new DesktopLoopDetector();
+      }
+
+      return { shortCircuitReason: 'ui_repair_close_click' };
+    }
+
+    // Repairs exhausted → takeover.
+    return takeover({
+      trigger: input.trigger,
+      triggerDetails: input.triggerDetails,
+      repair: {
+        attempt2Enabled: DESKTOP_LOOP_REPAIR_ATTEMPT2_ENABLED,
+      },
+    });
   }
 
   private handleDesktopSafetyAction(action: ActionResult): void {
@@ -1025,7 +1669,84 @@ export class AgentProcessor {
       return;
     }
 
-    const isUiAffecting = DESKTOP_OBSERVATION_REQUIRED_TOOLS.has(action.actionType);
+    // Track last observed screenshot hash to gate "no progress" blocking and reset repair budgets.
+    const prevHash = this.lastScreenshotHash;
+    const nextHash =
+      typeof action.screenshotHash === 'string' ? action.screenshotHash : null;
+
+    // Episode expiry: avoid holding "attempt used" state forever.
+    if (
+      this.desktopUiRepairEpisode &&
+      Date.now() - this.desktopUiRepairEpisode.startedAtMs >
+        DESKTOP_LOOP_REPAIR_EPISODE_MAX_MS
+    ) {
+      this.desktopUiRepairEpisode = null;
+    }
+
+    // Confirm progress conservatively: require the UI to move away from the episode anchor AND
+    // remain stable for at least 2 observations. This prevents animated jitter from resetting
+    // the repair ladder and causing repeated Esc.
+    if (this.desktopUiRepairEpisode?.anchorHash && nextHash) {
+      const distFromAnchor = hammingDistanceHex(
+        this.desktopUiRepairEpisode.anchorHash,
+        nextHash,
+      );
+
+      if (distFromAnchor > DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING) {
+        const candidate = this.desktopUiRepairEpisode.progressCandidateHash;
+        if (
+          candidate &&
+          hammingDistanceHex(candidate, nextHash) <=
+            DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING
+        ) {
+          this.desktopUiRepairEpisode.progressCandidateCount++;
+        } else {
+          this.desktopUiRepairEpisode.progressCandidateHash = nextHash;
+          this.desktopUiRepairEpisode.progressCandidateCount = 1;
+        }
+
+        if (this.desktopUiRepairEpisode.progressCandidateCount >= 2) {
+          this.blockedClickBuckets.clear();
+          this.desktopUiRepairEpisode = null;
+        }
+      } else {
+        this.desktopUiRepairEpisode.progressCandidateHash = null;
+        this.desktopUiRepairEpisode.progressCandidateCount = 0;
+      }
+    }
+
+    if (nextHash) {
+      this.lastScreenshotHash = nextHash;
+    }
+
+    // If a click produced no meaningful change, block repeating the same click bucket until progress.
+    if (
+      action.actionType === 'computer_click_mouse' &&
+      action.coordinates &&
+      prevHash &&
+      nextHash
+    ) {
+      const dist = hammingDistanceHex(prevHash, nextHash);
+      if (dist <= DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING) {
+        const bx = Math.floor(
+          action.coordinates.x / DESKTOP_LOOP_COORDINATE_BUCKET_PX,
+        );
+        const by = Math.floor(
+          action.coordinates.y / DESKTOP_LOOP_COORDINATE_BUCKET_PX,
+        );
+        const bucketKey = `${bx},${by}`;
+        const existing = this.blockedClickBuckets.get(bucketKey);
+        this.blockedClickBuckets.set(bucketKey, {
+          sinceHash: nextHash,
+          blockedAtMs: Date.now(),
+          count: (existing?.count || 0) + 1,
+        });
+      }
+    }
+
+    const isUiAffecting = DESKTOP_OBSERVATION_REQUIRED_TOOLS.has(
+      action.actionType,
+    );
 
     const hasObservation = action.screenshotCaptured === true;
 
@@ -1037,7 +1758,8 @@ export class AgentProcessor {
 
     if (
       isUiAffecting &&
-      this.desktopActionsWithoutObservation >= DESKTOP_MAX_ACTIONS_WITHOUT_OBSERVATION
+      this.desktopActionsWithoutObservation >=
+        DESKTOP_MAX_ACTIONS_WITHOUT_OBSERVATION
     ) {
       // Gold rule: do not continue “blind”. Instead of immediately interrupting, force an observation.
       // If the forced screenshot fails, we fall back to the typed interrupt path.
@@ -1053,6 +1775,11 @@ export class AgentProcessor {
       return;
     }
 
+    // During a self-repair action, do not schedule nested repairs/interrupts.
+    if (this.desktopUiRepairInProgress) {
+      return;
+    }
+
     const loop = this.desktopLoopDetector.record({
       atMs: Date.now(),
       signature: action.actionSignature,
@@ -1060,19 +1787,22 @@ export class AgentProcessor {
     });
 
     if (loop.interrupt) {
-      this.pendingDesktopNeedsHelp = buildNeedsHelpResult({
-        errorCode: 'LOOP_DETECTED_NO_PROGRESS',
-        details: {
-          rule: loop.rule,
-          recentActions: this.desktopLoopDetector.getRecent(),
-          noChangeMaxHamming: DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING,
-          repeatThreshold: DESKTOP_LOOP_REPEAT_THRESHOLD,
-        },
+      this.eventEmitter.emit('desktop.loop.detected', {
+        rule: loop.rule || 'unknown',
       });
-      this.eventEmitter.emit('desktop.loop.detected', { rule: loop.rule || 'unknown' });
-      this.eventEmitter.emit('desktop.interrupt', {
-        reasonCode: 'LOOP_DETECTED_NO_PROGRESS',
-      });
+
+      // Schedule a bounded repair (executed in the tool loop). Avoid stacking multiple repairs.
+      if (!this.pendingDesktopRepairTrigger) {
+        this.pendingDesktopRepairTrigger = {
+          trigger: 'loop',
+          details: {
+            rule: loop.rule || 'unknown',
+            signature: loop.signature,
+            count: loop.count,
+          },
+        };
+      }
+      return;
     }
   }
 
@@ -1097,7 +1827,9 @@ export class AgentProcessor {
       try {
         await this.actionLoggingService.flushActions(taskId);
       } catch (error: any) {
-        this.logger.warn(`Failed to flush action logs for ${taskId}: ${error.message}`);
+        this.logger.warn(
+          `Failed to flush action logs for ${taskId}: ${error.message}`,
+        );
       }
     }
 

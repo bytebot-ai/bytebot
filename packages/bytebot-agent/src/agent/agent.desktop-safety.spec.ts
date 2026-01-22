@@ -32,7 +32,9 @@ describe('agent.desktop-safety', () => {
 
       const normalized = normalizeComputerToolUseBlock(block);
       expect(normalized.normalizedBlock.name).toBe('computer_type_keys');
-      expect(normalized.rewriteReason).toBe('modifier_down_missing_holdms_to_tap');
+      expect(normalized.rewriteReason).toBe(
+        'modifier_down_missing_holdms_to_tap',
+      );
     });
 
     it('clamps holdMs for modifier holds', () => {
@@ -45,7 +47,9 @@ describe('agent.desktop-safety', () => {
 
       const normalized = normalizeComputerToolUseBlock(block);
       expect(normalized.normalizedBlock.name).toBe('computer_press_keys');
-      expect((normalized.normalizedBlock as any).input.holdMs).toBe(DESKTOP_MAX_KEY_HOLD_MS);
+      expect((normalized.normalizedBlock as any).input.holdMs).toBe(
+        DESKTOP_MAX_KEY_HOLD_MS,
+      );
       expect(normalized.rewriteReason).toBe('modifier_holdms_clamped');
     });
   });
@@ -63,7 +67,7 @@ describe('agent.desktop-safety', () => {
       const detector = new DesktopLoopDetector();
 
       let interrupted = false;
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 6; i++) {
         const res = detector.record({
           atMs: Date.now(),
           signature: 'computer_type_keys(keys=Enter)',
@@ -84,6 +88,7 @@ describe('agent.desktop-safety', () => {
         'ffffffffffffffff',
         '0000000000000000',
         'ffffffffffffffff',
+        '0000000000000000',
       ];
 
       let interrupted = false;
@@ -108,6 +113,7 @@ describe('agent.desktop-safety', () => {
         'ffffffffffffffff',
         '0000000000000000',
         'ffffffffffffffff',
+        '0000000000000000',
       ];
 
       let interrupted = false;
@@ -121,6 +127,80 @@ describe('agent.desktop-safety', () => {
       }
 
       expect(interrupted).toBe(true);
+    });
+
+    it('interrupts on alternating click/move loops within a window (non-consecutive repeats)', () => {
+      const detector = new DesktopLoopDetector();
+
+      const clickSig =
+        'computer_click_mouse(bucket=38,29,button=left,clickCount=1)';
+      const moveSig = 'computer_move_mouse(bucket=38,29)';
+
+      let interrupted = false;
+      for (let i = 0; i < 12; i++) {
+        const signature = i % 2 === 0 ? moveSig : clickSig;
+        const res = detector.record({
+          atMs: Date.now(),
+          signature,
+          screenshotHash: 'ffffffffffffffff',
+        });
+        interrupted = res.interrupt;
+        if (interrupted) break;
+      }
+
+      expect(interrupted).toBe(true);
+    });
+
+    it('interrupts on alternating click/move loops even when hashes jitter (animated page case)', () => {
+      const detector = new DesktopLoopDetector();
+
+      const clickSig =
+        'computer_click_mouse(bucket=38,29,button=left,clickCount=1)';
+      const moveSig = 'computer_move_mouse(bucket=38,29)';
+
+      // Hamming distance between these is 8 (fails "no change"<=6, passes animated<=12).
+      const h1 = 'ffffffffffffffff';
+      const h2 = '00ffffffffffffff';
+
+      let lastRule: string | undefined;
+      for (let i = 0; i < 12; i++) {
+        const signature = i % 2 === 0 ? moveSig : clickSig;
+        const res = detector.record({
+          atMs: Date.now(),
+          signature,
+          screenshotHash: i % 2 === 0 ? h1 : h2,
+        });
+        if (res.interrupt) {
+          lastRule = res.rule;
+          break;
+        }
+      }
+
+      expect(lastRule).toBe('repeat_in_window_animated_no_progress');
+    });
+
+    it('interrupts on excessive waits within a window when the screen jitters (non-consecutive waits)', () => {
+      const detector = new DesktopLoopDetector();
+
+      const h1 = 'ffffffffffffffff';
+      const h2 = '00ffffffffffffff';
+
+      let lastRule: string | undefined;
+      for (let i = 0; i < 24; i++) {
+        const signature =
+          i % 2 === 0 ? 'computer_wait' : 'computer_move_mouse(bucket=0,0)';
+        const res = detector.record({
+          atMs: Date.now(),
+          signature,
+          screenshotHash: i % 2 === 0 ? h1 : h2,
+        });
+        if (res.interrupt) {
+          lastRule = res.rule;
+          break;
+        }
+      }
+
+      expect(lastRule).toBe('wait_in_window_excessive');
     });
   });
 

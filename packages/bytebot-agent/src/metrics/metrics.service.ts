@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
+import {
+  Counter,
+  Gauge,
+  Histogram,
+  Registry,
+  collectDefaultMetrics,
+} from 'prom-client';
 
 type LlmFailoverEvent = {
   endpoint: string;
@@ -24,6 +30,12 @@ type LlmEndpointCallEvent = {
   endpoint: string;
   requestedModel: string;
   durationMs: number;
+};
+
+type DesktopUiRepairResultEvent = {
+  attempt: string;
+  outcome: 'success' | 'failure_no_change' | 'failure_invalid' | 'unknown';
+  trigger?: string;
 };
 
 @Injectable()
@@ -55,7 +67,12 @@ export class MetricsService {
   private readonly llmEndpointFailoverTotal = new Counter({
     name: 'bytebot_llm_endpoint_failover_total',
     help: 'Total endpoint-level failovers (primary endpoint -> fallback endpoint)',
-    labelNames: ['from_endpoint', 'to_endpoint', 'reason', 'requested_model'] as const,
+    labelNames: [
+      'from_endpoint',
+      'to_endpoint',
+      'reason',
+      'requested_model',
+    ] as const,
     registers: [this.registry],
   });
 
@@ -95,6 +112,20 @@ export class MetricsService {
     registers: [this.registry],
   });
 
+  private readonly desktopUiRepairAttemptTotal = new Counter({
+    name: 'bytebot_desktop_ui_repair_attempt_total',
+    help: 'Total desktop UI repair attempts, labeled by attempt and outcome',
+    labelNames: ['attempt', 'outcome'] as const,
+    registers: [this.registry],
+  });
+
+  private readonly desktopUiRepairSuccessTotal = new Counter({
+    name: 'bytebot_desktop_ui_repair_success_total',
+    help: 'Total successful desktop UI repair attempts',
+    labelNames: ['attempt'] as const,
+    registers: [this.registry],
+  });
+
   constructor() {
     collectDefaultMetrics({ register: this.registry });
   }
@@ -124,8 +155,13 @@ export class MetricsService {
 
   @OnEvent('llm.circuit.state-changed')
   onCircuitStateChanged(event: LlmCircuitStateChangedEvent): void {
-    this.llmCircuitOpen.set({ endpoint: event.endpoint }, event.state === 'OPEN' ? 1 : 0);
-    this.logger.debug(`Circuit state changed for ${event.endpoint}: ${event.state}`);
+    this.llmCircuitOpen.set(
+      { endpoint: event.endpoint },
+      event.state === 'OPEN' ? 1 : 0,
+    );
+    this.logger.debug(
+      `Circuit state changed for ${event.endpoint}: ${event.state}`,
+    );
   }
 
   @OnEvent('llm.endpoint.failover')
@@ -148,7 +184,10 @@ export class MetricsService {
 
   @OnEvent('desktop.keydown.rewritten')
   onDesktopKeydownRewritten(event: { key: string; reason: string }): void {
-    this.desktopKeydownRewrittenTotal.inc({ key: event.key, reason: event.reason });
+    this.desktopKeydownRewrittenTotal.inc({
+      key: event.key,
+      reason: event.reason,
+    });
   }
 
   @OnEvent('desktop.interrupt')
@@ -164,5 +203,27 @@ export class MetricsService {
   @OnEvent('desktop.forced_screenshot')
   onDesktopForcedScreenshot(event: { reason: string }): void {
     this.desktopForcedScreenshotTotal.inc({ reason: event.reason });
+  }
+
+  @OnEvent('desktop.ui_repair.result')
+  onDesktopUiRepairResult(event: DesktopUiRepairResultEvent): void {
+    const attemptRaw = String(event.attempt || '').trim();
+    const attempt =
+      attemptRaw === 'esc' || attemptRaw === 'close_click'
+        ? attemptRaw
+        : 'unknown';
+
+    const outcomeRaw = String(event.outcome || '').trim();
+    const outcome =
+      outcomeRaw === 'success' ||
+      outcomeRaw === 'failure_no_change' ||
+      outcomeRaw === 'failure_invalid'
+        ? outcomeRaw
+        : 'unknown';
+
+    this.desktopUiRepairAttemptTotal.inc({ attempt, outcome });
+    if (outcome === 'success') {
+      this.desktopUiRepairSuccessTotal.inc({ attempt });
+    }
   }
 }

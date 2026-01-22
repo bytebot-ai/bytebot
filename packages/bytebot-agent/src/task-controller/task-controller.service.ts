@@ -28,6 +28,18 @@ export interface TaskInfo {
   startedAt: string | null;
 }
 
+export type DesktopTakeoverNotAvailableReason =
+  | 'LEASE_EXPIRED'
+  | 'DESKTOP_TIMED_OUT';
+
+export type DesktopTakeoverAvailability =
+  | { ok: true; desktopUrl: string; timeoutAt: string | null }
+  | {
+      ok: false;
+      reason: DesktopTakeoverNotAvailableReason;
+      details?: Record<string, unknown>;
+    };
+
 /**
  * Heartbeat response from the task controller
  *
@@ -184,6 +196,106 @@ export class TaskControllerService implements OnModuleDestroy {
   }
 
   /**
+   * Strictly determines whether a desktop takeover is available.
+   *
+   * Important: When Phase 6 is enabled, we must not fall back to legacy mode
+   * on 404 or controller errors, otherwise we can incorrectly offer takeover
+   * for a desktop session that has already expired.
+   *
+   * This method is intentionally fail-closed: if we cannot verify the session,
+   * we treat takeover as not available and avoid mutating task state.
+   */
+  async getDesktopTakeoverAvailability(
+    taskId: string,
+  ): Promise<DesktopTakeoverAvailability> {
+    if (!this.isPhase6Enabled()) {
+      return { ok: true, desktopUrl: this.fallbackDesktopUrl, timeoutAt: null };
+    }
+
+    try {
+      const url = `${this.controllerUrl}/api/v1/tasks/${taskId}`;
+      this.logger.debug(`Checking takeover availability via ${url}`);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return {
+            ok: false,
+            reason: 'LEASE_EXPIRED',
+            details: { status: 404 },
+          };
+        }
+
+        return {
+          ok: false,
+          reason: 'LEASE_EXPIRED',
+          details: { status: response.status },
+        };
+      }
+
+      const taskInfo: TaskInfo = await response.json();
+
+      if (
+        typeof taskInfo.timeoutAt === 'string' &&
+        taskInfo.timeoutAt.trim().length > 0
+      ) {
+        const timeoutMs = Date.parse(taskInfo.timeoutAt);
+        if (!Number.isFinite(timeoutMs)) {
+          this.logger.warn(
+            `Task ${taskId} returned an invalid timeoutAt; failing takeover closed: ${taskInfo.timeoutAt}`,
+          );
+          return {
+            ok: false,
+            reason: 'LEASE_EXPIRED',
+            details: {
+              timeoutAt: taskInfo.timeoutAt,
+              phase: taskInfo.phase,
+              invalid: true,
+            },
+          };
+        }
+
+        if (timeoutMs <= Date.now()) {
+          return {
+            ok: false,
+            reason: 'DESKTOP_TIMED_OUT',
+            details: { timeoutAt: taskInfo.timeoutAt, phase: taskInfo.phase },
+          };
+        }
+      }
+
+      if (!taskInfo.desktopEndpoint) {
+        return {
+          ok: false,
+          reason: 'LEASE_EXPIRED',
+          details: { phase: taskInfo.phase },
+        };
+      }
+
+      return {
+        ok: true,
+        desktopUrl: taskInfo.desktopEndpoint,
+        timeoutAt: taskInfo.timeoutAt ?? null,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to check takeover availability for ${taskId}: ${error.message}`,
+      );
+      return {
+        ok: false,
+        reason: 'LEASE_EXPIRED',
+        details: { error: error.message },
+      };
+    }
+  }
+
+  /**
    * Get desktop URL for a task
    * Primary method for agent to get the correct desktop endpoint
    *
@@ -283,22 +395,27 @@ export class TaskControllerService implements OnModuleDestroy {
       // v2.2.11: If in WaitingForCapacity phase, extend timeout to accommodate capacity provisioning
       if (heartbeat.phase === 'WaitingForCapacity') {
         // Calculate new effective timeout based on server-provided estimatedWaitTime or extension
-        if (heartbeat.estimatedWaitTime !== undefined && heartbeat.estimatedWaitTime > 0) {
+        if (
+          heartbeat.estimatedWaitTime !== undefined &&
+          heartbeat.estimatedWaitTime > 0
+        ) {
           // Server knows how long capacity wait will last
-          const serverSuggestedTimeout = Date.now() - startTime + (heartbeat.estimatedWaitTime * 1000) + 30000; // +30s buffer
+          const serverSuggestedTimeout =
+            Date.now() - startTime + heartbeat.estimatedWaitTime * 1000 + 30000; // +30s buffer
           if (serverSuggestedTimeout > effectiveTimeoutMs) {
             effectiveTimeoutMs = serverSuggestedTimeout;
             if (!capacityWaitLogged) {
               this.logger.log(
                 `waitForDesktop: Task ${taskId} in WaitingForCapacity phase, extended timeout to ${Math.round(effectiveTimeoutMs / 1000)}s ` +
-                `(server estimated wait: ${heartbeat.estimatedWaitTime}s)`,
+                  `(server estimated wait: ${heartbeat.estimatedWaitTime}s)`,
               );
               capacityWaitLogged = true;
             }
           }
         } else {
           // Use default extension
-          const extendedTimeout = Date.now() - startTime + capacityWaitExtensionMs;
+          const extendedTimeout =
+            Date.now() - startTime + capacityWaitExtensionMs;
           if (extendedTimeout > effectiveTimeoutMs) {
             effectiveTimeoutMs = extendedTimeout;
             if (!capacityWaitLogged) {
@@ -335,7 +452,9 @@ export class TaskControllerService implements OnModuleDestroy {
       // Log waiting status
       this.logger.debug(
         `waitForDesktop: Task ${taskId} not ready (attempt ${attempts}): phase=${heartbeat.phase}, message=${heartbeat.message}` +
-        (heartbeat.estimatedWaitTime !== undefined ? `, estimatedWait=${heartbeat.estimatedWaitTime}s` : ''),
+          (heartbeat.estimatedWaitTime !== undefined
+            ? `, estimatedWait=${heartbeat.estimatedWaitTime}s`
+            : ''),
       );
 
       // Wait before next attempt with exponential backoff + jitter
@@ -469,9 +588,7 @@ export class TaskControllerService implements OnModuleDestroy {
           };
         }
 
-        this.logger.warn(
-          `Heartbeat failed for ${taskId}: ${response.status}`,
-        );
+        this.logger.warn(`Heartbeat failed for ${taskId}: ${response.status}`);
         // Assume continue on other heartbeat failures, but not ready (unknown state)
         return {
           acknowledged: false,
@@ -486,7 +603,9 @@ export class TaskControllerService implements OnModuleDestroy {
 
       // v2.2.22: Clear 404 grace window on successful response
       if (this.task404GraceStart.has(taskId)) {
-        this.logger.log(`Heartbeat succeeded for ${taskId}, clearing 404 grace window`);
+        this.logger.log(
+          `Heartbeat succeeded for ${taskId}, clearing 404 grace window`,
+        );
         this.task404GraceStart.delete(taskId);
       }
 
@@ -496,7 +615,7 @@ export class TaskControllerService implements OnModuleDestroy {
       const heartbeatResponse: HeartbeatResponse = {
         acknowledged: result.acknowledged ?? false,
         shouldContinue: result.shouldContinue ?? true,
-        ready: result.ready ?? (result.shouldContinue === true), // fallback for older controllers
+        ready: result.ready ?? result.shouldContinue === true, // fallback for older controllers
         phase: result.phase ?? 'Unknown',
         message: result.message ?? '',
         timeRemaining: result.timeRemaining ?? 0,
@@ -524,9 +643,7 @@ export class TaskControllerService implements OnModuleDestroy {
 
       return heartbeatResponse;
     } catch (error: any) {
-      this.logger.error(
-        `Heartbeat error for ${taskId}: ${error.message}`,
-      );
+      this.logger.error(`Heartbeat error for ${taskId}: ${error.message}`);
       // Assume continue on error, but not ready
       return {
         acknowledged: false,
@@ -563,9 +680,7 @@ export class TaskControllerService implements OnModuleDestroy {
         const result = await this.postHeartbeat(taskId, 'processing');
 
         if (!result.shouldContinue) {
-          this.logger.warn(
-            `Heartbeat indicates task ${taskId} should stop`,
-          );
+          this.logger.warn(`Heartbeat indicates task ${taskId} should stop`);
           this.stopHeartbeat(taskId);
         }
       } catch (error: any) {
@@ -579,7 +694,9 @@ export class TaskControllerService implements OnModuleDestroy {
 
     // Send initial heartbeat immediately
     this.postHeartbeat(taskId, 'started').catch((error) => {
-      this.logger.error(`Initial heartbeat failed for ${taskId}: ${error.message}`);
+      this.logger.error(
+        `Initial heartbeat failed for ${taskId}: ${error.message}`,
+      );
     });
   }
 

@@ -1,4 +1,7 @@
-import { ComputerToolUseContentBlock, MessageContentType } from '@bytebot/shared';
+import {
+  ComputerToolUseContentBlock,
+  MessageContentType,
+} from '@bytebot/shared';
 
 export const DESKTOP_MAX_ACTIONS_WITHOUT_OBSERVATION = parseInt(
   process.env.BYTEBOT_DESKTOP_MAX_ACTIONS_WITHOUT_OBSERVATION || '3',
@@ -11,7 +14,7 @@ export const DESKTOP_MAX_KEY_HOLD_MS = parseInt(
 );
 
 export const DESKTOP_LOOP_REPEAT_THRESHOLD = parseInt(
-  process.env.BYTEBOT_DESKTOP_LOOP_REPEAT_THRESHOLD || '5',
+  process.env.BYTEBOT_DESKTOP_LOOP_REPEAT_THRESHOLD || '6',
   10,
 );
 
@@ -20,8 +23,49 @@ export const DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING = parseInt(
   10,
 );
 
+// Secondary stability threshold to tolerate animated pages/spinners.
+// Used only for loop detection heuristics; "meaningful progress" still uses the primary threshold above.
+export const DESKTOP_LOOP_ANIMATED_MAX_HAMMING = parseInt(
+  process.env.BYTEBOT_DESKTOP_LOOP_ANIMATED_MAX_HAMMING || '12',
+  10,
+);
+
 export const DESKTOP_LOOP_RECENT_ACTIONS_MAX = parseInt(
   process.env.BYTEBOT_DESKTOP_LOOP_RECENT_ACTIONS_MAX || '25',
+  10,
+);
+
+export const DESKTOP_LOOP_COORDINATE_BUCKET_PX = parseInt(
+  process.env.BYTEBOT_DESKTOP_LOOP_COORDINATE_BUCKET_PX || '20',
+  10,
+);
+
+export const DESKTOP_LOOP_WAIT_IN_WINDOW_THRESHOLD = parseInt(
+  process.env.BYTEBOT_DESKTOP_LOOP_WAIT_IN_WINDOW_THRESHOLD || '12',
+  10,
+);
+
+export const DESKTOP_LOOP_REPAIR_ENABLED =
+  (process.env.BYTEBOT_DESKTOP_LOOP_REPAIR_ENABLED || '')
+    .trim()
+    .toLowerCase() === 'true';
+
+export const DESKTOP_LOOP_REPAIR_ATTEMPT2_ENABLED =
+  (process.env.BYTEBOT_DESKTOP_LOOP_REPAIR_ATTEMPT2_ENABLED || '')
+    .trim()
+    .toLowerCase() === 'true';
+
+export const DESKTOP_LOOP_REPAIR_ATTEMPT2_MIN_CONFIDENCE = (() => {
+  const raw = (
+    process.env.BYTEBOT_DESKTOP_LOOP_REPAIR_ATTEMPT2_MIN_CONFIDENCE || '0.7'
+  ).trim();
+  const value = Number.parseFloat(raw);
+  if (!Number.isFinite(value)) return 0.7;
+  return Math.min(Math.max(value, 0), 1);
+})();
+
+export const DESKTOP_LOOP_REPAIR_EPISODE_MAX_MS = parseInt(
+  process.env.BYTEBOT_DESKTOP_LOOP_REPAIR_EPISODE_MAX_MS || '120000',
   10,
 );
 
@@ -90,9 +134,12 @@ export function normalizeComputerToolUseBlock(
 
   const input = (block as any).input as Record<string, unknown> | undefined;
   const keys = Array.isArray(input?.keys)
-    ? (input.keys as unknown[]).filter((k): k is string => typeof k === 'string')
+    ? (input.keys as unknown[]).filter(
+        (k): k is string => typeof k === 'string',
+      )
     : [];
-  const press = input?.press === 'down' || input?.press === 'up' ? input.press : 'down';
+  const press =
+    input?.press === 'down' || input?.press === 'up' ? input.press : 'down';
 
   const holdMsRaw =
     typeof input?.holdMs === 'number'
@@ -102,7 +149,9 @@ export function normalizeComputerToolUseBlock(
         : null;
 
   const holdMs =
-    typeof holdMsRaw === 'number' && Number.isFinite(holdMsRaw) && holdMsRaw >= 0
+    typeof holdMsRaw === 'number' &&
+    Number.isFinite(holdMsRaw) &&
+    holdMsRaw >= 0
       ? Math.min(Math.floor(holdMsRaw), DESKTOP_MAX_KEY_HOLD_MS)
       : null;
 
@@ -200,13 +249,14 @@ export function hammingDistanceHex(a: string, b: string): number {
 
 export class DesktopLoopDetector {
   private recent: DesktopActionSample[] = [];
-  private streakSignature: string | null = null;
-  private streakCount = 0;
-  private streakFirstHash: string | null = null;
-  private streakHadMeaningfulChange = false;
   private consecutiveWaitCount = 0;
 
-  record(sample: DesktopActionSample): { interrupt: boolean; rule?: string } {
+  record(sample: DesktopActionSample): {
+    interrupt: boolean;
+    rule?: string;
+    signature?: string;
+    count?: number;
+  } {
     this.recent.push(sample);
     if (this.recent.length > DESKTOP_LOOP_RECENT_ACTIONS_MAX) {
       this.recent.shift();
@@ -228,32 +278,89 @@ export class DesktopLoopDetector {
       return { interrupt: true, rule: 'wait_loop_excessive' };
     }
 
-    if (signature !== this.streakSignature) {
-      this.streakSignature = signature;
-      this.streakCount = 1;
-      this.streakFirstHash = hash;
-      this.streakHadMeaningfulChange = false;
-      return { interrupt: false };
-    }
+    const waitCountInWindow = this.recent.filter((r) => {
+      const t = r.signature.split('(')[0] || r.signature;
+      return t === 'computer_wait';
+    }).length;
 
-    this.streakCount++;
-    if (this.streakFirstHash && hash) {
-      const dist = hammingDistanceHex(this.streakFirstHash, hash);
-      if (dist > DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING) {
-        this.streakHadMeaningfulChange = true;
-      }
-    } else if (!this.streakFirstHash && hash) {
-      this.streakFirstHash = hash;
+    const hashes = this.recent
+      .map((r) => r.screenshotHash)
+      .filter((h): h is string => typeof h === 'string' && h.trim().length > 0);
+
+    // Require multiple observations to assert "no progress" robustly.
+    const stableHashWindowSize = 3;
+    const recentHashes = hashes.slice(-stableHashWindowSize);
+    const hasStableObservationWindow =
+      recentHashes.length >= stableHashWindowSize &&
+      recentHashes.every(
+        (h) =>
+          hammingDistanceHex(recentHashes[0], h) <=
+          DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING,
+      );
+
+    const hasAnimatedObservationWindow =
+      !hasStableObservationWindow &&
+      recentHashes.length >= stableHashWindowSize &&
+      recentHashes.every(
+        (h) =>
+          hammingDistanceHex(recentHashes[0], h) <=
+          DESKTOP_LOOP_ANIMATED_MAX_HAMMING,
+      );
+
+    // Animated/spinner case: tolerate small hash jitter while still stopping obvious repeats.
+    if (
+      hasAnimatedObservationWindow &&
+      waitCountInWindow >= DESKTOP_LOOP_WAIT_IN_WINDOW_THRESHOLD
+    ) {
+      return { interrupt: true, rule: 'wait_in_window_excessive' };
     }
 
     if (
-      this.streakCount >= DESKTOP_LOOP_REPEAT_THRESHOLD &&
-      this.streakFirstHash &&
-      hash
+      (!hasStableObservationWindow && !hasAnimatedObservationWindow) ||
+      !hash
     ) {
-      const dist = hammingDistanceHex(this.streakFirstHash, hash);
-      if (!this.streakHadMeaningfulChange && dist <= DESKTOP_LOOP_NO_CHANGE_MAX_HAMMING) {
-        return { interrupt: true, rule: 'same_action_x_no_progress' };
+      return { interrupt: false };
+    }
+
+    const signatureCounts = new Map<string, number>();
+    for (const r of this.recent) {
+      signatureCounts.set(
+        r.signature,
+        (signatureCounts.get(r.signature) || 0) + 1,
+      );
+    }
+
+    let topSignature: string | null = null;
+    let topCount = 0;
+    for (const [sig, count] of signatureCounts.entries()) {
+      if (count > topCount) {
+        topSignature = sig;
+        topCount = count;
+      }
+    }
+
+    if (topSignature && topCount >= DESKTOP_LOOP_REPEAT_THRESHOLD) {
+      if (hasStableObservationWindow) {
+        return {
+          interrupt: true,
+          rule: 'repeat_in_window_no_progress',
+          signature: topSignature,
+          count: topCount,
+        };
+      }
+
+      // Conservative: only trip the animated/jitter-tolerant rule for click/move bucket loops.
+      const topType = (topSignature.split('(')[0] || topSignature).trim();
+      if (
+        topType === 'computer_click_mouse' ||
+        topType === 'computer_move_mouse'
+      ) {
+        return {
+          interrupt: true,
+          rule: 'repeat_in_window_animated_no_progress',
+          signature: topSignature,
+          count: topCount,
+        };
       }
     }
 
@@ -271,18 +378,48 @@ export function buildDesktopActionSignature(
   const name = block.name;
   const input = (block as any).input as Record<string, unknown> | undefined;
 
+  const bucket = (coordinates?: { x: number; y: number } | null): string => {
+    if (
+      !coordinates ||
+      typeof coordinates.x !== 'number' ||
+      typeof coordinates.y !== 'number' ||
+      !Number.isFinite(coordinates.x) ||
+      !Number.isFinite(coordinates.y)
+    ) {
+      return '∅';
+    }
+    const bx = Math.floor(coordinates.x / DESKTOP_LOOP_COORDINATE_BUCKET_PX);
+    const by = Math.floor(coordinates.y / DESKTOP_LOOP_COORDINATE_BUCKET_PX);
+    return `${bx},${by}`;
+  };
+
   switch (name) {
+    case 'computer_move_mouse': {
+      const coordinates =
+        input?.coordinates &&
+        typeof input.coordinates === 'object' &&
+        typeof (input as any).coordinates.x === 'number' &&
+        typeof (input as any).coordinates.y === 'number'
+          ? ((input as any).coordinates as { x: number; y: number })
+          : null;
+      return `${name}(bucket=${bucket(coordinates)})`;
+    }
     case 'computer_type_keys': {
       const keys = Array.isArray(input?.keys)
-        ? (input.keys as unknown[]).filter((k): k is string => typeof k === 'string')
+        ? (input.keys as unknown[]).filter(
+            (k): k is string => typeof k === 'string',
+          )
         : [];
       return `${name}(keys=${keys.join('+') || '∅'})`;
     }
     case 'computer_press_keys': {
       const keys = Array.isArray(input?.keys)
-        ? (input.keys as unknown[]).filter((k): k is string => typeof k === 'string')
+        ? (input.keys as unknown[]).filter(
+            (k): k is string => typeof k === 'string',
+          )
         : [];
-      const press = input?.press === 'down' || input?.press === 'up' ? input.press : 'down';
+      const press =
+        input?.press === 'down' || input?.press === 'up' ? input.press : 'down';
       const holdMs =
         typeof input?.holdMs === 'number'
           ? Math.floor(input.holdMs)
@@ -293,12 +430,14 @@ export function buildDesktopActionSignature(
     }
     case 'computer_type_text': {
       const text = typeof input?.text === 'string' ? input.text : '';
-      const isSensitive = typeof input?.isSensitive === 'boolean' ? input.isSensitive : false;
+      const isSensitive =
+        typeof input?.isSensitive === 'boolean' ? input.isSensitive : false;
       return `${name}(len=${text.length},hasNewline=${text.includes('\n')},sensitive=${isSensitive})`;
     }
     case 'computer_paste_text': {
       const text = typeof input?.text === 'string' ? input.text : '';
-      const isSensitive = typeof input?.isSensitive === 'boolean' ? input.isSensitive : false;
+      const isSensitive =
+        typeof input?.isSensitive === 'boolean' ? input.isSensitive : false;
       return `${name}(len=${text.length},hasNewline=${text.includes('\n')},sensitive=${isSensitive})`;
     }
     case 'computer_wait': {
@@ -306,8 +445,43 @@ export function buildDesktopActionSignature(
     }
     case 'computer_click_mouse': {
       const button = typeof input?.button === 'string' ? input.button : 'left';
-      const clickCount = typeof input?.clickCount === 'number' ? input.clickCount : 1;
-      return `${name}(button=${button},clickCount=${clickCount})`;
+      const clickCount =
+        typeof input?.clickCount === 'number' ? input.clickCount : 1;
+      const coordinates =
+        input?.coordinates &&
+        typeof input.coordinates === 'object' &&
+        typeof (input as any).coordinates.x === 'number' &&
+        typeof (input as any).coordinates.y === 'number'
+          ? ((input as any).coordinates as { x: number; y: number })
+          : null;
+      return `${name}(bucket=${bucket(coordinates)},button=${button},clickCount=${clickCount})`;
+    }
+    case 'computer_press_mouse': {
+      const button = typeof input?.button === 'string' ? input.button : 'left';
+      const press =
+        input?.press === 'down' || input?.press === 'up' ? input.press : 'down';
+      const coordinates =
+        input?.coordinates &&
+        typeof input.coordinates === 'object' &&
+        typeof (input as any).coordinates.x === 'number' &&
+        typeof (input as any).coordinates.y === 'number'
+          ? ((input as any).coordinates as { x: number; y: number })
+          : null;
+      return `${name}(bucket=${bucket(coordinates)},button=${button},press=${press})`;
+    }
+    case 'computer_scroll': {
+      const direction =
+        typeof input?.direction === 'string' ? input.direction : 'down';
+      const scrollCount =
+        typeof input?.scrollCount === 'number' ? input.scrollCount : 1;
+      const coordinates =
+        input?.coordinates &&
+        typeof input.coordinates === 'object' &&
+        typeof (input as any).coordinates.x === 'number' &&
+        typeof (input as any).coordinates.y === 'number'
+          ? ((input as any).coordinates as { x: number; y: number })
+          : null;
+      return `${name}(bucket=${bucket(coordinates)},direction=${direction},scrollCount=${scrollCount})`;
     }
     default:
       return name;

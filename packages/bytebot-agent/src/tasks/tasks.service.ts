@@ -101,9 +101,9 @@ export class TasksService {
       });
       this.logger.log(
         `Task created successfully with ID: ${task.id}` +
-        (task.workspaceId ? ` (workspace: ${task.workspaceId})` : '') +
-        (task.requiresDesktop ? ' [desktop required]' : '') +
-        (task.executionSurface ? ` [surface: ${task.executionSurface}]` : ''),
+          (task.workspaceId ? ` (workspace: ${task.workspaceId})` : '') +
+          (task.requiresDesktop ? ' [desktop required]' : '') +
+          (task.executionSurface ? ` [surface: ${task.executionSurface}]` : ''),
       );
 
       let filesDescription = '';
@@ -154,7 +154,9 @@ export class TasksService {
         }
 
         if (createTaskDto.previousStepResults) {
-          contextParts.push(`**Previous Steps Completed:**\n${createTaskDto.previousStepResults}`);
+          contextParts.push(
+            `**Previous Steps Completed:**\n${createTaskDto.previousStepResults}`,
+          );
         }
 
         contextParts.push(`**Current Task:** ${createTaskDto.description}`);
@@ -169,7 +171,8 @@ export class TasksService {
           hasGoalContext: !!createTaskDto.goalContext,
           goalContextLength: createTaskDto.goalContext?.length || 0,
           hasPreviousStepResults: !!createTaskDto.previousStepResults,
-          previousStepResultsLength: createTaskDto.previousStepResults?.length || 0,
+          previousStepResultsLength:
+            createTaskDto.previousStepResults?.length || 0,
           enhancedMessageLength: messageText.length,
           nodeRunId: createTaskDto.nodeRunId || null,
           workspaceId: createTaskDto.workspaceId || null,
@@ -214,9 +217,13 @@ export class TasksService {
    * Updates the task with the generated title and emits an update event.
    * Errors are logged but don't affect the task.
    */
-  private async generateTitleAsync(taskId: string, description: string): Promise<void> {
+  private async generateTitleAsync(
+    taskId: string,
+    description: string,
+  ): Promise<void> {
     try {
-      const title = await this.titleGenerationService.generateTitle(description);
+      const title =
+        await this.titleGenerationService.generateTitle(description);
 
       // Update the task with the generated title
       const updatedTask = await this.prisma.task.update({
@@ -299,14 +306,17 @@ export class TasksService {
     const podName = process.env.POD_NAME || 'unknown';
     const timestamp = new Date().toISOString();
 
-    this.logger.log(`[${timestamp}] [${podName}] Attempting to claim next task`);
+    this.logger.log(
+      `[${timestamp}] [${podName}] Attempting to claim next task`,
+    );
 
     try {
-      const claimedTask = await this.prisma.$transaction(async (tx) => {
-        // Step 1: Select and lock the next available PENDING task using FOR UPDATE SKIP LOCKED
-        // v2.2.4: Only claim PENDING tasks - RUNNING tasks should not be re-claimed here
-        // This prevents the race condition where multiple pods claim the same task
-        const tasks = await tx.$queryRaw<Task[]>`
+      const claimedTask = await this.prisma.$transaction(
+        async (tx) => {
+          // Step 1: Select and lock the next available PENDING task using FOR UPDATE SKIP LOCKED
+          // v2.2.4: Only claim PENDING tasks - RUNNING tasks should not be re-claimed here
+          // This prevents the race condition where multiple pods claim the same task
+          const tasks = await tx.$queryRaw<Task[]>`
           SELECT * FROM "Task"
           WHERE status = 'PENDING'
           ORDER BY priority DESC, "queuedAt" ASC NULLS LAST, "createdAt" ASC
@@ -314,20 +324,24 @@ export class TasksService {
           FOR UPDATE SKIP LOCKED
         `;
 
-        if (tasks.length === 0) {
-          this.logger.debug(`[${timestamp}] [${podName}] No available tasks to claim`);
-          return null;
-        }
+          if (tasks.length === 0) {
+            this.logger.debug(
+              `[${timestamp}] [${podName}] No available tasks to claim`,
+            );
+            return null;
+          }
 
-        const task = tasks[0];
-        this.logger.log(
-          `[${timestamp}] [${podName}] Locked task ${task.id} (status: ${task.status}), claiming it`,
-        );
+          const task = tasks[0];
+          this.logger.log(
+            `[${timestamp}] [${podName}] Locked task ${task.id} (status: ${task.status}), claiming it`,
+          );
 
-        // Step 2: Atomically update the task status to RUNNING with lease info
-        // v2.2.5: Set claimedBy and leaseExpiresAt for orphaned task recovery
-        const leaseExpiresAt = new Date(Date.now() + TASK_LEASE_TIMEOUT_SECONDS * 1000);
-        await tx.$executeRaw`
+          // Step 2: Atomically update the task status to RUNNING with lease info
+          // v2.2.5: Set claimedBy and leaseExpiresAt for orphaned task recovery
+          const leaseExpiresAt = new Date(
+            Date.now() + TASK_LEASE_TIMEOUT_SECONDS * 1000,
+          );
+          await tx.$executeRaw`
           UPDATE "Task"
           SET status = 'RUNNING',
               "executedAt" = NOW(),
@@ -337,23 +351,25 @@ export class TasksService {
           WHERE id = ${task.id}
         `;
 
-        this.logger.log(
-          `[${timestamp}] [${podName}] Successfully claimed task ${task.id}`,
-        );
+          this.logger.log(
+            `[${timestamp}] [${podName}] Successfully claimed task ${task.id}`,
+          );
 
-        // Step 3: Fetch the complete task with files
-        const fetchedTask = await tx.task.findUnique({
-          where: { id: task.id },
-          include: { files: true },
-        });
+          // Step 3: Fetch the complete task with files
+          const fetchedTask = await tx.task.findUnique({
+            where: { id: task.id },
+            include: { files: true },
+          });
 
-        return fetchedTask;
-      }, {
-        // Use SERIALIZABLE isolation for maximum safety
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        // Timeout after 10 seconds if lock cannot be acquired
-        timeout: 10000,
-      });
+          return fetchedTask;
+        },
+        {
+          // Use SERIALIZABLE isolation for maximum safety
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          // Timeout after 10 seconds if lock cannot be acquired
+          timeout: 10000,
+        },
+      );
 
       // v2.2.13: Emit WebSocket event AFTER transaction completes successfully
       // This notifies connected clients that the task status changed from PENDING to RUNNING
@@ -457,7 +473,9 @@ export class TasksService {
     this.logger.log(
       `[${timestamp}] Updating task with ID: ${id} (status: ${updateTaskDto.status || 'unchanged'})`,
     );
-    this.logger.debug(`[${timestamp}] Update data: ${JSON.stringify(updateTaskDto)}`);
+    this.logger.debug(
+      `[${timestamp}] Update data: ${JSON.stringify(updateTaskDto)}`,
+    );
 
     let retries = 0;
 
@@ -466,11 +484,14 @@ export class TasksService {
       const existingTask = await this.findById(id);
 
       if (!existingTask) {
-        this.logger.warn(`[${timestamp}] Task with ID: ${id} not found for update`);
+        this.logger.warn(
+          `[${timestamp}] Task with ID: ${id} not found for update`,
+        );
         throw new NotFoundException(`Task with ID ${id} not found`);
       }
 
-      const currentVersion = (existingTask as Task & { version?: number }).version ?? 0;
+      const currentVersion =
+        (existingTask as Task & { version?: number }).version ?? 0;
 
       this.logger.debug(
         `[${new Date().toISOString()}] Task ${id} current state: status=${existingTask.status}, version=${currentVersion}`,
@@ -497,12 +518,16 @@ export class TasksService {
 
         if (retries >= MAX_UPDATE_RETRIES) {
           const errorMsg = `Task ${id} was modified by another process. Please retry.`;
-          this.logger.error(`[${new Date().toISOString()}] ${errorMsg} (exhausted retries)`);
+          this.logger.error(
+            `[${new Date().toISOString()}] ${errorMsg} (exhausted retries)`,
+          );
           throw new ConflictException(errorMsg);
         }
 
         // Brief delay before retry (exponential backoff)
-        await new Promise((resolve) => setTimeout(resolve, Math.pow(2, retries) * 50));
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.pow(2, retries) * 50),
+        );
         continue;
       }
 
@@ -510,14 +535,18 @@ export class TasksService {
       let updatedTask = await this.prisma.task.findUnique({ where: { id } });
 
       if (!updatedTask) {
-        throw new NotFoundException(`Task with ID ${id} not found after update`);
+        throw new NotFoundException(
+          `Task with ID ${id} not found after update`,
+        );
       }
 
       const endTime = Date.now();
       this.logger.log(
         `[${new Date().toISOString()}] Successfully updated task ID: ${id} (status: ${updatedTask.status}, version: ${(updatedTask as Task & { version?: number }).version}, took ${endTime - startTime}ms)`,
       );
-      this.logger.debug(`[${new Date().toISOString()}] Updated task: ${JSON.stringify(updatedTask)}`);
+      this.logger.debug(
+        `[${new Date().toISOString()}] Updated task: ${JSON.stringify(updatedTask)}`,
+      );
 
       // Step 5: Handle status-specific side effects
       if (updateTaskDto.status === TaskStatus.COMPLETED) {
@@ -537,7 +566,9 @@ export class TasksService {
     }
 
     // This should never be reached, but TypeScript needs it
-    throw new ConflictException(`Task ${id} update failed after ${MAX_UPDATE_RETRIES} retries`);
+    throw new ConflictException(
+      `Task ${id} update failed after ${MAX_UPDATE_RETRIES} retries`,
+    );
   }
 
   async delete(id: string): Promise<Task> {
@@ -596,11 +627,10 @@ export class TasksService {
     // Use per-task desktop endpoint from Task Controller (Phase 6)
     try {
       const desktopUrl = await this.taskControllerService.getDesktopUrl(taskId);
-      this.logger.log(`Stopping input tracking for task ${taskId} at ${desktopUrl}`);
-      await fetch(
-        `${desktopUrl}/input-tracking/stop`,
-        { method: 'POST' },
+      this.logger.log(
+        `Stopping input tracking for task ${taskId} at ${desktopUrl}`,
       );
+      await fetch(`${desktopUrl}/input-tracking/stop`, { method: 'POST' });
     } catch (error) {
       this.logger.error('Failed to stop input tracking', error);
     }
@@ -618,14 +648,31 @@ export class TasksService {
     this.logger.log(`Taking over control for task ID: ${taskId}`);
 
     const task = await this.findById(taskId);
-    if (!task) {
-      throw new NotFoundException(`Task with ID ${taskId} not found`);
-    }
 
     if (task.control !== Role.ASSISTANT) {
       throw new BadRequestException(
         `Task ${taskId} is not under agent control`,
       );
+    }
+
+    // Guardrail: do not mutate task state if the desktop lease/session is no longer valid.
+    // When Phase 6 is enabled, the task controller is the source of truth for per-task desktop
+    // session existence and timeout.
+    let desktopUrlForTakeover: string | null = null;
+    if (this.taskControllerService.isPhase6Enabled()) {
+      const availability =
+        await this.taskControllerService.getDesktopTakeoverAvailability(taskId);
+      if (!availability.ok) {
+        throw new ConflictException({
+          errorCode: 'TAKEOVER_NOT_AVAILABLE',
+          message: 'Desktop takeover is not available (session expired)',
+          details: {
+            reason: availability.reason,
+            ...(availability.details || {}),
+          },
+        });
+      }
+      desktopUrlForTakeover = availability.desktopUrl;
     }
 
     const updatedTask = await this.prisma.task.update({
@@ -637,12 +684,13 @@ export class TasksService {
 
     // Use per-task desktop endpoint from Task Controller (Phase 6)
     try {
-      const desktopUrl = await this.taskControllerService.getDesktopUrl(taskId);
-      this.logger.log(`Starting input tracking for task ${taskId} at ${desktopUrl}`);
-      await fetch(
-        `${desktopUrl}/input-tracking/start`,
-        { method: 'POST' },
+      const desktopUrl =
+        desktopUrlForTakeover ||
+        (await this.taskControllerService.getDesktopUrl(taskId));
+      this.logger.log(
+        `Starting input tracking for task ${taskId} at ${desktopUrl}`,
       );
+      await fetch(`${desktopUrl}/input-tracking/start`, { method: 'POST' });
     } catch (error) {
       this.logger.error('Failed to start input tracking', error);
     }
@@ -701,10 +749,14 @@ export class TasksService {
    */
   async renewLease(taskId: string, claimedBy: string): Promise<Task | null> {
     const timestamp = new Date().toISOString();
-    this.logger.debug(`[${timestamp}] [${claimedBy}] Renewing lease for task ${taskId}`);
+    this.logger.debug(
+      `[${timestamp}] [${claimedBy}] Renewing lease for task ${taskId}`,
+    );
 
     try {
-      const newLeaseExpiry = new Date(Date.now() + TASK_LEASE_TIMEOUT_SECONDS * 1000);
+      const newLeaseExpiry = new Date(
+        Date.now() + TASK_LEASE_TIMEOUT_SECONDS * 1000,
+      );
 
       // Only renew if this pod owns the lease and task is still RUNNING
       const result = await this.prisma.task.updateMany({
@@ -725,10 +777,14 @@ export class TasksService {
         return null;
       }
 
-      this.logger.debug(`[${timestamp}] [${claimedBy}] Lease renewed for task ${taskId} until ${newLeaseExpiry.toISOString()}`);
+      this.logger.debug(
+        `[${timestamp}] [${claimedBy}] Lease renewed for task ${taskId} until ${newLeaseExpiry.toISOString()}`,
+      );
       return await this.prisma.task.findUnique({ where: { id: taskId } });
     } catch (error: any) {
-      this.logger.error(`[${timestamp}] [${claimedBy}] Error renewing lease: ${error.message}`);
+      this.logger.error(
+        `[${timestamp}] [${claimedBy}] Error renewing lease: ${error.message}`,
+      );
       return null;
     }
   }
@@ -768,7 +824,9 @@ export class TasksService {
       });
 
       if (orphanedTasks.length === 0) {
-        this.logger.debug(`[${timestamp}] [${podName}] No orphaned tasks found`);
+        this.logger.debug(
+          `[${timestamp}] [${podName}] No orphaned tasks found`,
+        );
         return [];
       }
 
@@ -785,7 +843,7 @@ export class TasksService {
 
         this.logger.warn(
           `[${timestamp}] [${podName}] Recovering orphaned task ${task.id} ` +
-          `(claimed by: ${task.claimedBy}, lease expired ${leaseDuration}s ago)`,
+            `(claimed by: ${task.claimedBy}, lease expired ${leaseDuration}s ago)`,
         );
 
         try {
@@ -804,17 +862,26 @@ export class TasksService {
 
           // Emit event for frontend notification
           this.eventEmitter.emit('task.failed', { taskId: task.id });
-          this.tasksGateway.emitTaskUpdate(task.id, await this.findById(task.id));
+          this.tasksGateway.emitTaskUpdate(
+            task.id,
+            await this.findById(task.id),
+          );
 
-          this.logger.log(`[${timestamp}] [${podName}] Task ${task.id} marked as FAILED due to lease expiration`);
+          this.logger.log(
+            `[${timestamp}] [${podName}] Task ${task.id} marked as FAILED due to lease expiration`,
+          );
         } catch (error: any) {
-          this.logger.error(`[${timestamp}] [${podName}] Failed to recover task ${task.id}: ${error.message}`);
+          this.logger.error(
+            `[${timestamp}] [${podName}] Failed to recover task ${task.id}: ${error.message}`,
+          );
         }
       }
 
       return recoveredIds;
     } catch (error: any) {
-      this.logger.error(`[${timestamp}] [${podName}] Error recovering orphaned tasks: ${error.message}`);
+      this.logger.error(
+        `[${timestamp}] [${podName}] Error recovering orphaned tasks: ${error.message}`,
+      );
       return [];
     }
   }
@@ -837,10 +904,14 @@ export class TasksService {
           leaseExpiresAt: null,
         },
       });
-      this.logger.debug(`[${timestamp}] [${podName}] Cleared lease for task ${taskId}`);
+      this.logger.debug(
+        `[${timestamp}] [${podName}] Cleared lease for task ${taskId}`,
+      );
     } catch (error: any) {
       // Non-critical - log and continue
-      this.logger.warn(`[${timestamp}] [${podName}] Failed to clear lease for task ${taskId}: ${error.message}`);
+      this.logger.warn(
+        `[${timestamp}] [${podName}] Failed to clear lease for task ${taskId}: ${error.message}`,
+      );
     }
   }
 
@@ -854,12 +925,14 @@ export class TasksService {
    * @param options - Optional configuration for the backfill
    * @returns Summary of the backfill operation
    */
-  async backfillTitles(options: {
-    batchSize?: number;
-    delayMs?: number;
-    limit?: number;
-    dryRun?: boolean;
-  } = {}): Promise<{
+  async backfillTitles(
+    options: {
+      batchSize?: number;
+      delayMs?: number;
+      limit?: number;
+      dryRun?: boolean;
+    } = {},
+  ): Promise<{
     total: number;
     successful: number;
     failed: number;
@@ -877,7 +950,9 @@ export class TasksService {
     const startTime = Date.now();
     const timestamp = new Date().toISOString();
 
-    this.logger.log(`[${timestamp}] Starting title backfill (batchSize=${batchSize}, delayMs=${delayMs}, limit=${limit}, dryRun=${dryRun})`);
+    this.logger.log(
+      `[${timestamp}] Starting title backfill (batchSize=${batchSize}, delayMs=${delayMs}, limit=${limit}, dryRun=${dryRun})`,
+    );
 
     // Find all tasks without titles (idempotent query)
     let query = this.prisma.task.findMany({
@@ -922,12 +997,16 @@ export class TasksService {
     };
 
     if (tasksToProcess.length === 0) {
-      this.logger.log(`[${timestamp}] No tasks without titles found. Backfill complete.`);
+      this.logger.log(
+        `[${timestamp}] No tasks without titles found. Backfill complete.`,
+      );
       result.durationMs = Date.now() - startTime;
       return result;
     }
 
-    this.logger.log(`[${timestamp}] Found ${tasksToProcess.length} tasks without titles`);
+    this.logger.log(
+      `[${timestamp}] Found ${tasksToProcess.length} tasks without titles`,
+    );
 
     // Process in batches
     for (let i = 0; i < tasksToProcess.length; i += batchSize) {
@@ -935,18 +1014,24 @@ export class TasksService {
       const batchNum = Math.floor(i / batchSize) + 1;
       const totalBatches = Math.ceil(tasksToProcess.length / batchSize);
 
-      this.logger.log(`[${new Date().toISOString()}] Processing batch ${batchNum}/${totalBatches} (${batch.length} tasks)`);
+      this.logger.log(
+        `[${new Date().toISOString()}] Processing batch ${batchNum}/${totalBatches} (${batch.length} tasks)`,
+      );
 
       // Process batch concurrently
       const batchResults = await Promise.allSettled(
         batch.map(async (task) => {
           if (dryRun) {
-            this.logger.debug(`[DRY RUN] Would generate title for task ${task.id}`);
+            this.logger.debug(
+              `[DRY RUN] Would generate title for task ${task.id}`,
+            );
             return { taskId: task.id, title: '[DRY RUN - NOT GENERATED]' };
           }
 
           try {
-            const title = await this.titleGenerationService.generateTitle(task.description);
+            const title = await this.titleGenerationService.generateTitle(
+              task.description,
+            );
 
             // Update the task with the generated title
             await this.prisma.task.update({
@@ -968,17 +1053,25 @@ export class TasksService {
           result.successful++;
         } else {
           result.failed++;
-          const errorInfo = batchResult.reason as { taskId: string; error: string };
+          const errorInfo = batchResult.reason as {
+            taskId: string;
+            error: string;
+          };
           result.errors.push(errorInfo);
-          this.logger.warn(`Task ${errorInfo.taskId}: FAILED - ${errorInfo.error}`);
+          this.logger.warn(
+            `Task ${errorInfo.taskId}: FAILED - ${errorInfo.error}`,
+          );
         }
       }
 
       // Progress log
-      const progress = ((i + batch.length) / tasksToProcess.length * 100).toFixed(1);
+      const progress = (
+        ((i + batch.length) / tasksToProcess.length) *
+        100
+      ).toFixed(1);
       this.logger.log(
         `[${new Date().toISOString()}] Progress: ${i + batch.length}/${tasksToProcess.length} (${progress}%) - ` +
-        `Success: ${result.successful}, Failed: ${result.failed}`,
+          `Success: ${result.successful}, Failed: ${result.failed}`,
       );
 
       // Delay between batches (except for the last batch)
@@ -989,7 +1082,7 @@ export class TasksService {
     }
 
     result.durationMs = Date.now() - startTime;
-    const successRate = (result.successful / result.total * 100).toFixed(2);
+    const successRate = ((result.successful / result.total) * 100).toFixed(2);
 
     this.logger.log(`
 ===== TITLE BACKFILL COMPLETE =====

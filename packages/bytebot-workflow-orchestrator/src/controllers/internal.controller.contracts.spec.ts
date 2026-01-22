@@ -223,6 +223,21 @@ describe('InternalController planner/dispatch contract gates', () => {
       expect(result.output?.summary).toBe('Sign-in required');
     });
 
+    it('returns WAITING_USER_INPUT for DESKTOP_TAKEOVER_REQUIRED', async () => {
+      const getTaskStatus = jest.fn().mockResolvedValue({
+        status: 'NEEDS_HELP',
+        result: { errorCode: 'DESKTOP_TAKEOVER_REQUIRED', message: 'Popup requires takeover' },
+        error: null,
+      });
+
+      const controller = makeController({ getTaskStatus });
+
+      const result = await controller.getTaskStatus('task1', 'true', 't1');
+
+      expect(result.status).toBe('WAITING_USER_INPUT');
+      expect(result.output?.summary).toBe('Popup requires takeover');
+    });
+
     it('returns WAITING_PROVIDER for provider-eligible NEEDS_HELP codes', async () => {
       const getTaskStatus = jest.fn().mockResolvedValue({
         status: 'NEEDS_HELP',
