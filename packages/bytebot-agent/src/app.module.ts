@@ -13,6 +13,11 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SummariesModule } from './summaries/summaries.modue';
 import { ProxyModule } from './proxy/proxy.module';
+import { LLMResilienceModule } from './llm-resilience/llm-resilience.module';
+import { WorkspaceModule } from './workspace/workspace.module';
+import { GatewayModule } from './gateway/gateway.module';
+import { ToolsModule } from './tools/tools.module';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
   imports: [
@@ -29,7 +34,12 @@ import { ProxyModule } from './proxy/proxy.module';
     OpenAIModule,
     GoogleModule,
     ProxyModule,
+    LLMResilienceModule, // v2.5.0: Retry logic for LLM API calls
     PrismaModule,
+    WorkspaceModule, // v2.3.0 M4: Workspace-aware desktop resolution and locking
+    GatewayModule,   // v2.3.0 M4: Butler Service Gateway integration
+    ToolsModule,     // v2.3.0 M4: Unified tool execution and routing
+    MetricsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

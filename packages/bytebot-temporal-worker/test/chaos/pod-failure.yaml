@@ -1,0 +1,111 @@
+# Chaos Mesh Pod Failure Tests
+# Tests Temporal worker resilience to pod failures
+#
+# Prerequisites:
+#   - Chaos Mesh installed: helm install chaos-mesh chaos-mesh/chaos-mesh -n chaos-mesh
+#   - RBAC configured for chaos testing namespace
+#
+# Usage:
+#   kubectl apply -f test/chaos/pod-failure.yaml
+#   # Monitor workflow behavior during chaos
+#   kubectl delete -f test/chaos/pod-failure.yaml
+---
+# Pod Kill Chaos - Simulates sudden pod termination
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: temporal-worker-pod-kill
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: pod-failure
+spec:
+  action: pod-kill
+  mode: one  # Kill one random pod
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  scheduler:
+    cron: "@every 2m"  # Kill a pod every 2 minutes
+  duration: "30s"
+---
+# Pod Failure Chaos - Simulates pod entering failed state
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: temporal-worker-pod-failure
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: pod-failure
+spec:
+  action: pod-failure
+  mode: fixed-percent
+  value: "50"  # Fail 50% of pods
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  duration: "60s"
+---
+# Container Kill - Simulates OOMKill or crash
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: temporal-worker-container-kill
+  namespace: bytebot
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: pod-failure
+spec:
+  action: container-kill
+  mode: one
+  containerNames:
+    - temporal-worker
+  selector:
+    namespaces:
+      - bytebot
+    labelSelectors:
+      app: bytebot-temporal-worker
+  duration: "30s"
+---
+# Temporal Server Pod Kill - Test worker behavior when Temporal is unavailable
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: temporal-server-pod-kill
+  namespace: temporal
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: temporal-failure
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - temporal
+    labelSelectors:
+      app.kubernetes.io/component: frontend
+  duration: "60s"
+---
+# Kafka Pod Kill - Test event emission resilience
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kafka-broker-pod-kill
+  namespace: kafka
+  labels:
+    app.kubernetes.io/part-of: bytebot
+    chaos-test: kafka-failure
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - kafka
+    labelSelectors:
+      strimzi.io/kind: Kafka
+  duration: "60s"

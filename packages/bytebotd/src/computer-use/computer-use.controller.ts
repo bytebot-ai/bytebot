@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   Body,
   Logger,
@@ -15,6 +16,28 @@ export class ComputerUseController {
   private readonly logger = new Logger(ComputerUseController.name);
 
   constructor(private readonly computerUseService: ComputerUseService) {}
+
+  @Get('capabilities')
+  capabilities() {
+    return this.computerUseService.getCapabilities();
+  }
+
+  @Post('reset-input')
+  async resetInput() {
+    try {
+      this.logger.log('Reset input request');
+      return await this.computerUseService.resetInput();
+    } catch (error: any) {
+      this.logger.error(
+        `Error resetting input: ${error.message}`,
+        error.stack,
+      );
+      throw new HttpException(
+        `Failed to reset input: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 
   @Post()
   async action(

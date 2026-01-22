@@ -12,9 +12,11 @@ import {
 } from '@bytebot/shared';
 import {
   BytebotAgentService,
+  BytebotAgentGenerateMessageOptions,
   BytebotAgentInterrupt,
   BytebotAgentResponse,
 } from '../agent/agent.types';
+import { filterToolsByPolicy } from '../agent/tool-policy';
 import { Message, Role } from '@prisma/client';
 import { googleTools } from './google.tools';
 import {
@@ -49,14 +51,29 @@ export class GoogleService implements BytebotAgentService {
     systemPrompt: string,
     messages: Message[],
     model: string = DEFAULT_MODEL.name,
-    useTools: boolean = true,
-    signal?: AbortSignal,
+    options: BytebotAgentGenerateMessageOptions = {},
   ): Promise<BytebotAgentResponse> {
+    const useTools = options.useTools ?? true;
+    const signal = options.signal;
+
     try {
       const maxTokens = 8192;
 
       // Convert our message content blocks to Anthropic's expected format
       const googleMessages = this.formatMessagesForGoogle(messages);
+
+      const googleToolsWithNames = googleTools.filter(
+        (tool): tool is (typeof googleTools)[number] & { name: string } =>
+          typeof tool.name === 'string' && tool.name.trim().length > 0,
+      );
+
+      const functionDeclarations = useTools
+        ? filterToolsByPolicy(
+            googleToolsWithNames,
+            (tool) => tool.name,
+            options.toolPolicy,
+          )
+        : [];
 
       const response: GenerateContentResponse =
         await this.google.models.generateContent({
@@ -71,7 +88,7 @@ export class GoogleService implements BytebotAgentService {
             tools: useTools
               ? [
                   {
-                    functionDeclarations: googleTools,
+                    functionDeclarations,
                   },
                 ]
               : [],

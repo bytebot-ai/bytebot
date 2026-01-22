@@ -25,6 +25,8 @@ const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
 const proxyUrl = process.env.BYTEBOT_LLM_PROXY_URL;
+// v2.2.14: Add API key for LiteLLM proxy authentication
+const proxyApiKey = process.env.BYTEBOT_LLM_PROXY_API_KEY;
 
 const models = [
   ...(anthropicApiKey ? ANTHROPIC_MODELS : []),
@@ -66,18 +68,61 @@ export class TasksController {
     return this.tasksService.findAll(pageNum, limitNum, statusFilter);
   }
 
+  /**
+   * v2.2.17: Backfill AI-generated titles for existing tasks.
+   *
+   * This endpoint generates titles for all tasks that don't have one.
+   * It's idempotent - safe to call multiple times.
+   *
+   * Query parameters:
+   * - batchSize: Number of tasks to process per batch (default: 10)
+   * - delayMs: Milliseconds to wait between batches (default: 2000)
+   * - limit: Maximum number of tasks to process (default: 0 = all)
+   * - dryRun: If true, simulates without making changes (default: false)
+   */
+  @Post('backfill-titles')
+  @HttpCode(HttpStatus.OK)
+  async backfillTitles(
+    @Query('batchSize') batchSize?: string,
+    @Query('delayMs') delayMs?: string,
+    @Query('limit') limit?: string,
+    @Query('dryRun') dryRun?: string,
+  ) {
+    const options = {
+      batchSize: batchSize ? parseInt(batchSize, 10) : 10,
+      delayMs: delayMs ? parseInt(delayMs, 10) : 2000,
+      limit: limit ? parseInt(limit, 10) : 0,
+      dryRun: dryRun === 'true',
+    };
+
+    return this.tasksService.backfillTitles(options);
+  }
+
   @Get('models')
   async getModels() {
     if (proxyUrl) {
       try {
+        // v2.2.14: Include Authorization header if API key is configured
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (proxyApiKey) {
+          headers['Authorization'] = `Bearer ${proxyApiKey}`;
+        }
+
         const response = await fetch(`${proxyUrl}/model/info`, {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
         });
 
         if (!response.ok) {
+          // v2.2.14: Provide specific error message for 401 to aid debugging
+          if (response.status === 401) {
+            throw new HttpException(
+              'LiteLLM proxy authentication failed. Check BYTEBOT_LLM_PROXY_API_KEY configuration.',
+              HttpStatus.UNAUTHORIZED,
+            );
+          }
           throw new HttpException(
             `Failed to fetch models from proxy: ${response.statusText}`,
             HttpStatus.BAD_GATEWAY,

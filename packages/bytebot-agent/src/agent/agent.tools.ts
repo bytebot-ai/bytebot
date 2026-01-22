@@ -181,7 +181,9 @@ export const _typeKeysTool = {
 export const _pressKeysTool = {
   name: 'computer_press_keys',
   description:
-    'Presses or releases specific keys (useful for holding modifiers)',
+    'Presses or releases specific keys (useful for holding modifiers). ' +
+    'Only use this for modifier holds (Shift/Ctrl/Alt/Meta) and provide holdMs <= 750. ' +
+    'For non-modifier keys like Enter/Tab/Escape/arrows, use computer_type_keys (tap/chord-tap) or computer_type_text (e.g. "\\n" for Enter).',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -194,6 +196,15 @@ export const _pressKeysTool = {
         type: 'string' as const,
         enum: ['up', 'down'],
         description: 'Whether to press down or release up',
+      },
+      holdMs: {
+        type: 'integer' as const,
+        description:
+          'Optional hold duration in milliseconds for press="down". ' +
+          'Only valid for modifier keys and will be capped at 750ms by the agent.',
+        nullable: true,
+        minimum: 0,
+        maximum: 750,
       },
     },
     required: ['keys', 'press'],
@@ -322,10 +333,45 @@ export const _setTaskStatusTool = {
         enum: ['completed', 'needs_help'],
         description: 'The status of the task',
       },
+      errorCode: {
+        type: 'string' as const,
+        description:
+          'Optional structured reason code when status="needs_help". ' +
+          'Use a specific code when external input or takeover is truly required; ' +
+          'do not use needs_help for strategy decisions (pick a reasonable default and continue).',
+        nullable: true,
+        enum: [
+          'GOAL_INTAKE_REQUIRED',
+          'APPROVAL_REQUIRED',
+          'DESKTOP_TAKEOVER_REQUIRED',
+          'DISPATCHED_USER_PROMPT_STEP',
+          'DESKTOP_NOT_ALLOWED',
+          'LLM_EMPTY_RESPONSE',
+          'TOOL_CONTRACT_VIOLATION',
+          'LOOP_DETECTED_NO_PROGRESS',
+          'UI_OBSERVATION_FAILED',
+          'UI_BLOCKED_SIGNIN',
+          'UI_BLOCKED_POPUP',
+          'CAPABILITY_MISMATCH',
+          'LLM_PROXY_DOWN',
+          'MODEL_UNAVAILABLE',
+          'WAITING_PROVIDER',
+          // Contract violation codes are emitted by the agent when the model response is malformed.
+          'CONTRACT_VIOLATION_UNTYPED_NEEDS_HELP',
+          'CONTRACT_VIOLATION_STRATEGY_AS_HELP',
+        ],
+      },
       description: {
         type: 'string' as const,
         description:
           'If the task is completed, a summary of the task. If the task needs help, a description of the issue or clarification needed.',
+      },
+      details: {
+        type: 'object' as const,
+        description:
+          'Optional structured details for status="needs_help". Must not include secrets.',
+        nullable: true,
+        additionalProperties: true,
       },
     },
     required: ['status', 'description'],

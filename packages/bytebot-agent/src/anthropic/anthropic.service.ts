@@ -16,9 +16,11 @@ import { Message, Role } from '@prisma/client';
 import { anthropicTools } from './anthropic.tools';
 import {
   BytebotAgentService,
+  BytebotAgentGenerateMessageOptions,
   BytebotAgentInterrupt,
   BytebotAgentResponse,
 } from '../agent/agent.types';
+import { filterToolsByPolicy } from '../agent/tool-policy';
 
 @Injectable()
 export class AnthropicService implements BytebotAgentService {
@@ -34,28 +36,55 @@ export class AnthropicService implements BytebotAgentService {
       );
     }
 
+    // v2.2.8: Re-enable SDK retries for transient error resilience.
+    // The SDK retries connection errors, 408, 409, 429, and 5xx with exponential backoff.
+    // Duplicate responses are handled by the idempotency check in MessagesService.create()
+    // which detects duplicate tool_use IDs before persisting to database.
+    // See: 2025-12-09-race-condition-duplicate-llm-calls-fix.md
     this.anthropic = new Anthropic({
       apiKey: apiKey || 'dummy-key-for-initialization',
+      maxRetries: 2, // SDK default: 2 retries with exponential backoff
     });
+
+    this.logger.log('AnthropicService initialized with maxRetries: 2');
   }
 
   async generateMessage(
     systemPrompt: string,
     messages: Message[],
     model: string = DEFAULT_MODEL.name,
-    useTools: boolean = true,
-    signal?: AbortSignal,
+    options: BytebotAgentGenerateMessageOptions = {},
   ): Promise<BytebotAgentResponse> {
+    const useTools = options.useTools ?? true;
+    const signal = options.signal;
+
+    // v2.2.7: Generate unique request ID for tracing
+    const requestId = `llm-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const startTime = Date.now();
+
     try {
       const maxTokens = 8192;
 
       // Convert our message content blocks to Anthropic's expected format
       const anthropicMessages = this.formatMessagesForAnthropic(messages);
 
-      // add cache_control to last tool
-      anthropicTools[anthropicTools.length - 1].cache_control = {
-        type: 'ephemeral',
-      };
+      const tools = useTools
+        ? filterToolsByPolicy(
+            anthropicTools.map((tool) => ({ ...tool })),
+            (tool) => tool.name,
+            options.toolPolicy,
+          )
+        : [];
+
+      // Add cache_control to the last tool (best-effort, do not mutate shared definitions)
+      if (tools.length > 0) {
+        (tools[tools.length - 1] as any).cache_control = { type: 'ephemeral' };
+      }
+
+      // v2.2.7: Log before LLM call for debugging duplicate call issues
+      this.logger.debug(
+        `[${requestId}] Starting LLM call: model=${model}, messages=${messages.length}, useTools=${useTools}`,
+      );
 
       // Make the API call
       const response = await this.anthropic.messages.create(
@@ -71,9 +100,21 @@ export class AnthropicService implements BytebotAgentService {
             },
           ],
           messages: anthropicMessages,
-          tools: useTools ? anthropicTools : [],
+          tools,
         },
         { signal },
+      );
+
+      const elapsed = Date.now() - startTime;
+
+      // v2.2.7: Log response details for debugging
+      // Extract tool_use IDs if present for tracking
+      const toolUseIds = response.content
+        .filter((block) => block.type === 'tool_use')
+        .map((block: any) => block.id);
+
+      this.logger.debug(
+        `[${requestId}] LLM call completed: elapsed=${elapsed}ms, blocks=${response.content.length}, toolUseIds=[${toolUseIds.join(', ')}]`,
       );
 
       // Convert Anthropic's response to our message content blocks format
@@ -87,14 +128,17 @@ export class AnthropicService implements BytebotAgentService {
         },
       };
     } catch (error) {
-      this.logger.log(error);
+      const elapsed = Date.now() - startTime;
+      this.logger.warn(
+        `[${requestId}] LLM call failed after ${elapsed}ms: ${error.message}`,
+      );
 
       if (error instanceof APIUserAbortError) {
-        this.logger.log('Anthropic API call aborted');
+        this.logger.log(`[${requestId}] Anthropic API call aborted`);
         throw new BytebotAgentInterrupt();
       }
       this.logger.error(
-        `Error sending message to Anthropic: ${error.message}`,
+        `[${requestId}] Error sending message to Anthropic: ${error.message}`,
         error.stack,
       );
       throw error;

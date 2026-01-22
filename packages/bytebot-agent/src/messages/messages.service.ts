@@ -3,6 +3,7 @@ import {
   NotFoundException,
   Inject,
   forwardRef,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Message, Role, Prisma } from '@prisma/client';
@@ -11,6 +12,7 @@ import {
   isComputerToolUseContentBlock,
   isToolResultContentBlock,
   isUserActionContentBlock,
+  isToolUseContentBlock,
 } from '@bytebot/shared';
 import { TasksGateway } from '../tasks/tasks.gateway';
 
@@ -27,6 +29,8 @@ export interface GroupedMessages {
 
 @Injectable()
 export class MessagesService {
+  private readonly logger = new Logger(MessagesService.name);
+
   constructor(
     private prisma: PrismaService,
     @Inject(forwardRef(() => TasksGateway))
@@ -38,6 +42,53 @@ export class MessagesService {
     role: Role;
     taskId: string;
   }): Promise<Message> {
+    // v2.2.7: Idempotency check for ASSISTANT messages
+    // Prevents duplicate messages from race conditions or SDK retries
+    // See: 2025-12-09-race-condition-duplicate-llm-calls-fix.md
+    if (data.role === Role.ASSISTANT) {
+      const toolUseIds = data.content
+        .filter((block) => isToolUseContentBlock(block))
+        .map((block: any) => block.id);
+
+      if (toolUseIds.length > 0) {
+        // Check if any of these tool_use IDs already exist in previous messages
+        const existingMessages = await this.prisma.message.findMany({
+          where: { taskId: data.taskId },
+          orderBy: { createdAt: 'desc' },
+          take: 10, // Check last 10 messages for efficiency
+        });
+
+        const existingToolUseIds = new Set<string>();
+        for (const msg of existingMessages) {
+          const content = msg.content as MessageContentBlock[];
+          for (const block of content) {
+            if (isToolUseContentBlock(block)) {
+              existingToolUseIds.add((block as any).id);
+            }
+          }
+        }
+
+        const duplicateIds = toolUseIds.filter((id) => existingToolUseIds.has(id));
+        if (duplicateIds.length > 0) {
+          this.logger.warn(
+            `[Idempotency] Skipping duplicate ASSISTANT message for task ${data.taskId}: ` +
+              `tool_use IDs ${duplicateIds.join(', ')} already exist in message history`,
+          );
+          // Return a minimal message object without actually creating it
+          // The caller can continue without error, but no duplicate is created
+          const existingMsg = existingMessages.find((msg) => {
+            const content = msg.content as MessageContentBlock[];
+            return content.some(
+              (block) => isToolUseContentBlock(block) && duplicateIds.includes((block as any).id),
+            );
+          });
+          if (existingMsg) {
+            return existingMsg;
+          }
+        }
+      }
+    }
+
     const message = await this.prisma.message.create({
       data: {
         content: data.content as Prisma.InputJsonValue,

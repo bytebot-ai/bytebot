@@ -11,6 +11,8 @@ import { GoogleModule } from '../google/google.module';
 import { SummariesModule } from 'src/summaries/summaries.modue';
 import { AgentAnalyticsService } from './agent.analytics';
 import { ProxyModule } from 'src/proxy/proxy.module';
+import { TaskControllerModule } from '../task-controller/task-controller.module';
+import { ActionLoggingModule } from '../action-logging/action-logging.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { ProxyModule } from 'src/proxy/proxy.module';
     OpenAIModule,
     GoogleModule,
     ProxyModule,
+    TaskControllerModule,
+    ActionLoggingModule,
   ],
   providers: [
     AgentProcessor,

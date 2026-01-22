@@ -3,6 +3,7 @@ import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { PNG } from 'pngjs';
 import { NutService } from '../nut/nut.service';
 import {
   ComputerAction,
@@ -25,8 +26,51 @@ import {
 @Injectable()
 export class ComputerUseService {
   private readonly logger = new Logger(ComputerUseService.name);
+  private readonly deadmanMs = parseInt(
+    process.env.BYTEBOT_INPUT_DEADMAN_MS || '1500',
+    10,
+  );
+
+  private readonly keyDownSince = new Map<string, number>();
+  private readonly keyDeadmanTimers = new Map<string, NodeJS.Timeout>();
+  private readonly buttonDownSince = new Map<'left' | 'right' | 'middle', number>();
+  private readonly buttonDeadmanTimers = new Map<
+    'left' | 'right' | 'middle',
+    NodeJS.Timeout
+  >();
 
   constructor(private readonly nutService: NutService) {}
+
+  getCapabilities(): {
+    resetInput: true;
+    screenshotHash: true;
+    inputDeadmanMs: number;
+    supportedActions: string[];
+  } {
+    return {
+      resetInput: true,
+      screenshotHash: true,
+      inputDeadmanMs: this.deadmanMs,
+      supportedActions: [
+        'move_mouse',
+        'trace_mouse',
+        'click_mouse',
+        'press_mouse',
+        'drag_mouse',
+        'scroll',
+        'type_keys',
+        'press_keys',
+        'type_text',
+        'paste_text',
+        'wait',
+        'screenshot',
+        'cursor_position',
+        'application',
+        'write_file',
+        'read_file',
+      ],
+    };
+  }
 
   async action(params: ComputerAction): Promise<any> {
     this.logger.log(`Executing computer action: ${params.action}`);
@@ -114,51 +158,33 @@ export class ComputerUseService {
     // Move to the first coordinate
     await this.nutService.mouseMoveEvent(path[0]);
 
-    // Hold keys if provided
-    if (holdKeys) {
-      await this.nutService.holdKeys(holdKeys, true);
-    }
-
-    // Move to each coordinate in the path
-    for (const coordinates of path) {
-      await this.nutService.mouseMoveEvent(coordinates);
-    }
-
-    // Release hold keys
-    if (holdKeys) {
-      await this.nutService.holdKeys(holdKeys, false);
-    }
+    await this.withHeldModifiers(holdKeys, async () => {
+      // Move to each coordinate in the path
+      for (const coordinates of path) {
+        await this.nutService.mouseMoveEvent(coordinates);
+      }
+    });
   }
 
   private async clickMouse(action: ClickMouseAction): Promise<void> {
     const { coordinates, button, holdKeys, clickCount } = action;
 
-    // Move to coordinates if provided
-    if (coordinates) {
-      await this.nutService.mouseMoveEvent(coordinates);
-    }
-
-    // Hold keys if provided
-    if (holdKeys) {
-      await this.nutService.holdKeys(holdKeys, true);
-    }
-
-    // Perform clicks
-    if (clickCount > 1) {
-      // Perform multiple clicks
-      for (let i = 0; i < clickCount; i++) {
-        await this.nutService.mouseClickEvent(button);
-        await this.delay(150);
+    await this.withHeldModifiers(holdKeys, async () => {
+      // Move to coordinates if provided
+      if (coordinates) {
+        await this.nutService.mouseMoveEvent(coordinates);
       }
-    } else {
-      // Perform a single click
-      await this.nutService.mouseClickEvent(button);
-    }
 
-    // Release hold keys
-    if (holdKeys) {
-      await this.nutService.holdKeys(holdKeys, false);
-    }
+      // Perform clicks
+      if (clickCount > 1) {
+        for (let i = 0; i < clickCount; i++) {
+          await this.nutService.mouseClickEvent(button);
+          await this.delay(150);
+        }
+      } else {
+        await this.nutService.mouseClickEvent(button);
+      }
+    });
   }
 
   private async pressMouse(action: PressMouseAction): Promise<void> {
@@ -172,8 +198,10 @@ export class ComputerUseService {
     // Perform press
     if (press === 'down') {
       await this.nutService.mouseButtonEvent(button, true);
+      this.markButtonDown(button);
     } else {
       await this.nutService.mouseButtonEvent(button, false);
+      this.markButtonUp(button);
     }
   }
 
@@ -183,47 +211,38 @@ export class ComputerUseService {
     // Move to the first coordinate
     await this.nutService.mouseMoveEvent(path[0]);
 
-    // Hold keys if provided
-    if (holdKeys) {
-      await this.nutService.holdKeys(holdKeys, true);
-    }
-
-    // Perform drag
-    await this.nutService.mouseButtonEvent(button, true);
-    for (const coordinates of path) {
-      await this.nutService.mouseMoveEvent(coordinates);
-    }
-    await this.nutService.mouseButtonEvent(button, false);
-
-    // Release hold keys
-    if (holdKeys) {
-      await this.nutService.holdKeys(holdKeys, false);
-    }
+    await this.withHeldModifiers(holdKeys, async () => {
+      await this.nutService.mouseButtonEvent(button, true);
+      this.markButtonDown(button);
+      try {
+        for (const coordinates of path) {
+          await this.nutService.mouseMoveEvent(coordinates);
+        }
+      } finally {
+        try {
+          await this.nutService.mouseButtonEvent(button, false);
+        } finally {
+          this.markButtonUp(button);
+        }
+      }
+    });
   }
 
   private async scroll(action: ScrollAction): Promise<void> {
     const { coordinates, direction, scrollCount, holdKeys } = action;
 
-    // Move to coordinates if provided
-    if (coordinates) {
-      await this.nutService.mouseMoveEvent(coordinates);
-    }
+    await this.withHeldModifiers(holdKeys, async () => {
+      // Move to coordinates if provided
+      if (coordinates) {
+        await this.nutService.mouseMoveEvent(coordinates);
+      }
 
-    // Hold keys if provided
-    if (holdKeys) {
-      await this.nutService.holdKeys(holdKeys, true);
-    }
-
-    // Perform scroll
-    for (let i = 0; i < scrollCount; i++) {
-      await this.nutService.mouseWheelEvent(direction, 1);
-      await new Promise((resolve) => setTimeout(resolve, 150));
-    }
-
-    // Release hold keys
-    if (holdKeys) {
-      await this.nutService.holdKeys(holdKeys, false);
-    }
+      // Perform scroll
+      for (let i = 0; i < scrollCount; i++) {
+        await this.nutService.mouseWheelEvent(direction, 1);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+    });
   }
 
   private async typeKeys(action: TypeKeysAction): Promise<void> {
@@ -233,7 +252,22 @@ export class ComputerUseService {
 
   private async pressKeys(action: PressKeysAction): Promise<void> {
     const { keys, press } = action;
-    await this.nutService.holdKeys(keys, press === 'down');
+    const { modifiers, nonModifiers } = this.splitModifiers(keys);
+
+    // Safety invariant: non-modifier holds are not allowed. Treat as a tap/chord tap.
+    if (press === 'down' && nonModifiers.length > 0) {
+      await this.nutService.sendKeys(keys, 75);
+      return;
+    }
+
+    if (press === 'down') {
+      await this.nutService.holdKeys(modifiers, true);
+      this.markKeysDown(modifiers);
+      return;
+    }
+
+    await this.nutService.holdKeys(keys, false);
+    this.markKeysUp(keys);
   }
 
   private async typeText(action: TypeTextAction): Promise<void> {
@@ -250,15 +284,261 @@ export class ComputerUseService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async screenshot(): Promise<{ image: string }> {
+  async screenshot(): Promise<{ image: string; imageHash?: string }> {
     this.logger.log(`Taking screenshot`);
     const buffer = await this.nutService.screendump();
-    return { image: `${buffer.toString('base64')}` };
+    let imageHash: string | undefined;
+    try {
+      imageHash = this.computeAHash(buffer);
+    } catch (error: any) {
+      this.logger.warn(`Failed to compute screenshot hash: ${error.message}`);
+    }
+
+    return { image: `${buffer.toString('base64')}`, ...(imageHash ? { imageHash } : {}) };
   }
 
   private async cursor_position(): Promise<{ x: number; y: number }> {
     this.logger.log(`Getting cursor position`);
     return await this.nutService.getCursorPosition();
+  }
+
+  async resetInput(): Promise<{
+    success: true;
+    releasedKeys: string[];
+    releasedButtons: Array<'left' | 'right' | 'middle'>;
+  }> {
+    const releasedKeys: string[] = [];
+    const releasedButtons: Array<'left' | 'right' | 'middle'> = [];
+
+    for (const [key, timer] of this.keyDeadmanTimers.entries()) {
+      clearTimeout(timer);
+      this.keyDeadmanTimers.delete(key);
+    }
+    for (const [button, timer] of this.buttonDeadmanTimers.entries()) {
+      clearTimeout(timer);
+      this.buttonDeadmanTimers.delete(button);
+    }
+
+    for (const key of this.keyDownSince.keys()) {
+      try {
+        await this.nutService.holdKeys([key], false);
+        releasedKeys.push(key);
+      } catch (error: any) {
+        this.logger.warn(`Failed to release key '${key}' during reset: ${error.message}`);
+      }
+    }
+    for (const button of this.buttonDownSince.keys()) {
+      try {
+        await this.nutService.mouseButtonEvent(button, false);
+        releasedButtons.push(button);
+      } catch (error: any) {
+        this.logger.warn(
+          `Failed to release mouse button '${button}' during reset: ${error.message}`,
+        );
+      }
+    }
+
+    this.keyDownSince.clear();
+    this.buttonDownSince.clear();
+
+    return { success: true, releasedKeys, releasedButtons };
+  }
+
+  private splitModifiers(keys: string[]): { modifiers: string[]; nonModifiers: string[] } {
+    const modifiers: string[] = [];
+    const nonModifiers: string[] = [];
+
+    for (const key of keys) {
+      if (this.isModifierKeyName(key)) {
+        modifiers.push(key);
+      } else {
+        nonModifiers.push(key);
+      }
+    }
+
+    return { modifiers, nonModifiers };
+  }
+
+  private isModifierKeyName(key: string): boolean {
+    const normalized = key.trim().toLowerCase();
+    if (!normalized) return false;
+
+    return (
+      normalized.startsWith('shift') ||
+      normalized.startsWith('control') ||
+      normalized.startsWith('ctrl') ||
+      normalized.startsWith('alt') ||
+      normalized.startsWith('meta') ||
+      normalized.startsWith('super') ||
+      normalized.startsWith('cmd') ||
+      normalized.startsWith('command') ||
+      normalized.startsWith('option')
+    );
+  }
+
+  private async withHeldModifiers(
+    holdKeys: string[] | undefined,
+    fn: () => Promise<void>,
+  ): Promise<void> {
+    const keys = Array.isArray(holdKeys) ? holdKeys : [];
+    if (keys.length === 0) {
+      return await fn();
+    }
+
+    const { modifiers, nonModifiers } = this.splitModifiers(keys);
+    if (nonModifiers.length > 0) {
+      this.logger.warn(
+        `Ignoring non-modifier hold keys: ${nonModifiers.join(', ')} (only modifiers are allowed)`,
+      );
+    }
+
+    if (modifiers.length === 0) {
+      return await fn();
+    }
+
+    await this.nutService.holdKeys(modifiers, true);
+    this.markKeysDown(modifiers);
+    try {
+      await fn();
+    } finally {
+      try {
+        await this.nutService.holdKeys(modifiers, false);
+      } finally {
+        this.markKeysUp(modifiers);
+      }
+    }
+  }
+
+  private markKeysDown(keys: string[]): void {
+    const now = Date.now();
+    for (const key of keys) {
+      if (this.keyDownSince.has(key)) continue;
+      this.keyDownSince.set(key, now);
+      this.scheduleKeyDeadman(key, now);
+    }
+  }
+
+  private markKeysUp(keys: string[]): void {
+    for (const key of keys) {
+      this.keyDownSince.delete(key);
+      const timer = this.keyDeadmanTimers.get(key);
+      if (timer) {
+        clearTimeout(timer);
+        this.keyDeadmanTimers.delete(key);
+      }
+    }
+  }
+
+  private scheduleKeyDeadman(key: string, sinceMs: number): void {
+    const existing = this.keyDeadmanTimers.get(key);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      void this.deadmanReleaseKey(key, sinceMs);
+    }, this.deadmanMs);
+    this.keyDeadmanTimers.set(key, timer);
+  }
+
+  private async deadmanReleaseKey(key: string, sinceMs: number): Promise<void> {
+    if (this.keyDownSince.get(key) !== sinceMs) {
+      return;
+    }
+    this.logger.warn(`Deadman auto-releasing key held too long: ${key} (${this.deadmanMs}ms)`);
+    try {
+      await this.nutService.holdKeys([key], false);
+    } catch (error: any) {
+      this.logger.error(`Deadman failed to release key '${key}': ${error.message}`, error.stack);
+    } finally {
+      this.markKeysUp([key]);
+    }
+  }
+
+  private markButtonDown(button: 'left' | 'right' | 'middle'): void {
+    const now = Date.now();
+    if (this.buttonDownSince.has(button)) return;
+    this.buttonDownSince.set(button, now);
+    this.scheduleButtonDeadman(button, now);
+  }
+
+  private markButtonUp(button: 'left' | 'right' | 'middle'): void {
+    this.buttonDownSince.delete(button);
+    const timer = this.buttonDeadmanTimers.get(button);
+    if (timer) {
+      clearTimeout(timer);
+      this.buttonDeadmanTimers.delete(button);
+    }
+  }
+
+  private scheduleButtonDeadman(button: 'left' | 'right' | 'middle', sinceMs: number): void {
+    const existing = this.buttonDeadmanTimers.get(button);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      void this.deadmanReleaseButton(button, sinceMs);
+    }, this.deadmanMs);
+    this.buttonDeadmanTimers.set(button, timer);
+  }
+
+  private async deadmanReleaseButton(
+    button: 'left' | 'right' | 'middle',
+    sinceMs: number,
+  ): Promise<void> {
+    if (this.buttonDownSince.get(button) !== sinceMs) {
+      return;
+    }
+    this.logger.warn(
+      `Deadman auto-releasing mouse button held too long: ${button} (${this.deadmanMs}ms)`,
+    );
+    try {
+      await this.nutService.mouseButtonEvent(button, false);
+    } catch (error: any) {
+      this.logger.error(
+        `Deadman failed to release mouse button '${button}': ${error.message}`,
+        error.stack,
+      );
+    } finally {
+      this.markButtonUp(button);
+    }
+  }
+
+  private computeAHash(buffer: Buffer): string {
+    const width = 8;
+    const height = 8;
+
+    const png = PNG.sync.read(buffer);
+    const pixels: number[] = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const sampleX = Math.min(
+          png.width - 1,
+          Math.floor(((x + 0.5) * png.width) / width),
+        );
+        const sampleY = Math.min(
+          png.height - 1,
+          Math.floor(((y + 0.5) * png.height) / height),
+        );
+        const idx = (sampleY * png.width + sampleX) * 4;
+        const r = png.data[idx];
+        const g = png.data[idx + 1];
+        const b = png.data[idx + 2];
+        const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        pixels.push(lum);
+      }
+    }
+
+    const avg = pixels.reduce((sum, v) => sum + v, 0) / pixels.length;
+    let bits = '';
+    for (const v of pixels) {
+      bits += v >= avg ? '1' : '0';
+    }
+
+    let hex = '';
+    for (let i = 0; i < bits.length; i += 4) {
+      hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+    }
+
+    return hex.padStart(16, '0');
   }
 
   private async application(action: ApplicationAction): Promise<void> {

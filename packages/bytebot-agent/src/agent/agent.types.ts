@@ -1,5 +1,6 @@
 import { Message } from '@prisma/client';
 import { MessageContentBlock } from '@bytebot/shared';
+import { ToolPolicyContext } from './tool-policy';
 
 export interface BytebotAgentResponse {
   contentBlocks: MessageContentBlock[];
@@ -15,9 +16,14 @@ export interface BytebotAgentService {
     systemPrompt: string,
     messages: Message[],
     model: string,
-    useTools: boolean,
-    signal?: AbortSignal,
+    options?: BytebotAgentGenerateMessageOptions,
   ): Promise<BytebotAgentResponse>;
+}
+
+export interface BytebotAgentGenerateMessageOptions {
+  useTools?: boolean;
+  toolPolicy?: ToolPolicyContext;
+  signal?: AbortSignal;
 }
 
 export interface BytebotAgentModel {

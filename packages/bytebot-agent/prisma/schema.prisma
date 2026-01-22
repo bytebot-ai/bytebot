@@ -11,6 +11,9 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // v2.2.6: Direct URL for migrations (bypasses PgBouncer)
+  // Required because Prisma migrations use features incompatible with PgBouncer transaction mode
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 enum TaskStatus {
@@ -40,9 +43,18 @@ enum TaskType {
   SCHEDULED
 }
 
+// PR5: Explicit execution surface for enforcing text-only vs desktop
+// Nullable for backward compatibility; agent computes fallback from requiresDesktop if unset.
+enum ExecutionSurface {
+  TEXT_ONLY
+  DESKTOP
+}
+
 model Task {
   id            String        @id @default(uuid())
   description   String
+  // v2.2.16: AI-generated short title for task list display (max 100 chars)
+  title         String?       @db.VarChar(100)
   type          TaskType      @default(IMMEDIATE)
   status        TaskStatus    @default(PENDING)
   priority      TaskPriority  @default(MEDIUM)
@@ -56,12 +68,51 @@ model Task {
   queuedAt      DateTime?
   error         String?
   result        Json?
-  // Example: 
+  // Example:
   // { "provider": "anthropic", "name": "claude-opus-4-20250514", "title": "Claude Opus 4" }
   model         Json
   messages      Message[]
   summaries     Summary[]
   files         File[]
+  // v2.0.28: Added for optimistic locking to prevent race conditions
+  // Incremented on each update to detect concurrent modifications
+  version       Int           @default(0)
+
+  // v2.2.5: Lease-based orphaned task recovery
+  // claimedBy - which pod claimed the task (null if not claimed)
+  // leaseExpiresAt - when the lease expires (task can be reclaimed after this time)
+  claimedBy       String?       @db.VarChar(255)
+  leaseExpiresAt  DateTime?
+
+  // v2.3.0 M4: Workflow context (null for Product 1 Tasks, set for Product 2 Workflows)
+  // workspaceId - persistent workspace ID from workflow orchestrator
+  // nodeRunId - specific workflow node run this task is executing for
+  // These enable workspace-aware desktop resolution and granular locking
+  workspaceId     String?       @db.VarChar(255)
+  nodeRunId       String?       @db.VarChar(255)
+
+  // v2.3.0 M4: Tool configuration from workflow node definition
+  // Passed from orchestrator to control which tools are available
+  allowedTools      String[]    @default([])
+  gatewayToolsOnly  Boolean     @default(false)
+  highRiskTools     String[]    @default([])
+
+  // Phase 4: Execution surface constraint
+  // If true, task MUST have a valid desktop pod before executing desktop tools
+  // Prevents silent downgrade to non-desktop execution
+  requiresDesktop   Boolean     @default(false)
+
+  // PR5: Explicit execution surface (TEXT_ONLY vs DESKTOP)
+  // When null, agent falls back to requiresDesktop.
+  executionSurface  ExecutionSurface?
+
+  // v2.1.0 Phase 6.0: Artifact and action log relations
+  artifacts     TaskArtifact[]
+  actionLogs    TaskActionLog[]
+
+  // Indexes for workflow queries
+  @@index([workspaceId])
+  @@index([nodeRunId])
 }
 
 model Summary {
@@ -106,9 +157,115 @@ model File {
   data          String      // Base64 encoded file data
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
-  
+
   // Relations
   task          Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
   taskId        String
 }
 
+// v2.1.0 Phase 6.0: Artifact types for S3/MinIO storage
+enum ArtifactType {
+  RECORDING     // VNC session recordings (webm)
+  SCREENSHOT    // Desktop screenshots (png)
+  ACTION_LOG    // Agent action logs (jsonl)
+  OUTPUT        // Task output files
+  TEMP          // Temporary files (auto-expire)
+}
+
+// v2.1.0 Phase 6.0: Task artifacts stored in MinIO
+// References objects in bytebot-artifacts bucket on store cluster
+model TaskArtifact {
+  id              String        @id @default(uuid())
+  taskId          String
+  tenantId        String        @db.VarChar(100)
+
+  // S3/MinIO Reference
+  bucketName      String        @default("bytebot-artifacts") @db.VarChar(255)
+  objectKey       String        @db.Text  // e.g., "tenant-1/task-abc/recordings/session.webm"
+
+  // Artifact Metadata
+  artifactType    ArtifactType
+  fileName        String        @db.VarChar(1024)
+  contentType     String        @db.VarChar(255)  // MIME type
+  sizeBytes       BigInt
+  checksum        String?       @db.VarChar(64)   // SHA256 hash
+
+  // Lifecycle
+  retentionDays   Int           @default(30)
+  expiresAt       DateTime?
+  deletedAt       DateTime?     // Soft delete
+
+  // Flexible metadata (JSONB)
+  // Examples: { "duration": 3600, "resolution": "1920x1080" }
+  metadata        Json?
+  tags            String[]      @default([])
+
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  accessedAt      DateTime?
+
+  // Relations
+  task            Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // Indexes for common queries
+  @@index([taskId])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@index([taskId, artifactType])
+  @@index([tenantId, createdAt])
+
+  @@map("task_artifacts")
+}
+
+// v2.1.0 Phase 6.0: Agent action log entry
+// Stores structured logs of all agent actions for audit and retraining
+model TaskActionLog {
+  id              String        @id @default(uuid())
+  taskId          String
+
+  // Action Details
+  actionType      String        @db.VarChar(100)  // click, type, scroll, screenshot, etc.
+  actionStatus    String        @default("success") @db.VarChar(50)  // success, failed, skipped
+
+  // Timing
+  timestamp       DateTime      @default(now())
+  durationMs      Int?          // Action duration in milliseconds
+
+  // Action Context
+  // Element interacted with (button, input, link, etc.)
+  elementDescription  String?   @db.Text
+  // Coordinates if applicable
+  coordinates     Json?         // { "x": 450, "y": 320 }
+  // Keyboard input (masked for passwords)
+  maskedInput     String?       @db.Text
+
+  // Screenshot reference (links to TaskArtifact)
+  screenshotKey   String?       @db.VarChar(500)
+
+  // LLM Context
+  // Why the agent took this action
+  llmReasoning    String?       @db.Text
+  llmModel        String?       @db.VarChar(100)
+  llmTokenCount   Int?
+
+  // Flexible action data (JSONB)
+  // Examples: { "selector": "button.submit", "value": "***" }
+  actionData      Json?
+
+  // Error info if failed
+  errorMessage    String?       @db.Text
+
+  // Relations
+  task            Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // Indexes for common queries
+  @@index([taskId])
+  @@index([timestamp])
+  @@index([actionType])
+  @@index([actionStatus])
+  @@index([taskId, timestamp])
+
+  @@map("task_action_logs")
+}

@@ -17,9 +17,11 @@ import { Message, Role } from '@prisma/client';
 import { openaiTools } from './openai.tools';
 import {
   BytebotAgentService,
+  BytebotAgentGenerateMessageOptions,
   BytebotAgentInterrupt,
   BytebotAgentResponse,
 } from '../agent/agent.types';
+import { filterToolsByPolicy } from '../agent/tool-policy';
 
 @Injectable()
 export class OpenAIService implements BytebotAgentService {
@@ -44,12 +46,18 @@ export class OpenAIService implements BytebotAgentService {
     systemPrompt: string,
     messages: Message[],
     model: string = DEFAULT_MODEL.name,
-    useTools: boolean = true,
-    signal?: AbortSignal,
+    options: BytebotAgentGenerateMessageOptions = {},
   ): Promise<BytebotAgentResponse> {
+    const useTools = options.useTools ?? true;
+    const signal = options.signal;
+
     const isReasoning = model.startsWith('o');
     try {
       const openaiMessages = this.formatMessagesForOpenAI(messages);
+
+      const tools = useTools
+        ? filterToolsByPolicy(openaiTools, (tool) => tool.name, options.toolPolicy)
+        : [];
 
       const maxTokens = 8192;
       const response = await this.openai.responses.create(
@@ -58,7 +66,7 @@ export class OpenAIService implements BytebotAgentService {
           max_output_tokens: maxTokens,
           input: openaiMessages,
           instructions: systemPrompt,
-          tools: useTools ? openaiTools : [],
+          tools,
           reasoning: isReasoning ? { effort: 'medium' } : null,
           store: false,
           include: isReasoning ? ['reasoning.encrypted_content'] : [],

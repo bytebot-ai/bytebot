@@ -127,6 +127,7 @@ export type PressKeysToolUseBlock = ToolUseContentBlock & {
   input: {
     keys: string[];
     press: Press;
+    holdMs?: number;
   };
 };
 
@@ -223,6 +224,17 @@ export type SetTaskStatusToolUseBlock = ToolUseContentBlock & {
   input: {
     status: "completed" | "failed" | "needs_help";
     description: string;
+    /**
+     * Optional structured error code for needs_help.
+     * When present, downstream systems can deterministically classify whether this requires
+     * external input (e.g., UI_BLOCKED_SIGNIN) vs internal recovery.
+     */
+    errorCode?: string;
+    /**
+     * Optional structured details for needs_help.
+     * Must not include secrets.
+     */
+    details?: Record<string, any>;
   };
 };
 

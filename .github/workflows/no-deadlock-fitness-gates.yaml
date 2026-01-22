@@ -1,0 +1,71 @@
+name: No-Deadlock Fitness Gates
+
+on:
+  pull_request:
+    paths:
+      - "packages/bytebot-workflow-orchestrator/**"
+      - "packages/bytebot-temporal-worker/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/bytebot-workflow-orchestrator/**"
+      - "packages/bytebot-temporal-worker/**"
+
+permissions:
+  contents: read
+
+jobs:
+  orchestrator-internal-contracts:
+    name: Orchestrator internal API contracts
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            packages/bytebot-workflow-orchestrator/package-lock.json
+
+      - name: Install orchestrator dependencies
+        run: |
+          cd packages/bytebot-workflow-orchestrator
+          npm ci
+
+      - name: Run internal controller contract tests
+        run: |
+          cd packages/bytebot-workflow-orchestrator
+          npm test -- internal.controller.contracts.spec.ts
+
+  temporal-execution-contracts:
+    name: Temporal worker execution contracts
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            packages/bytebot-temporal-worker/package-lock.json
+
+      - name: Install temporal-worker dependencies
+        run: |
+          cd packages/bytebot-temporal-worker
+          npm ci
+
+      - name: Run execution activity contract tests
+        run: |
+          cd packages/bytebot-temporal-worker
+          npm test -- execution.activities.spec.ts
