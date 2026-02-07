@@ -13,6 +13,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SummariesModule } from './summaries/summaries.modue';
 import { ProxyModule } from './proxy/proxy.module';
+import { PlaybooksModule } from './playbooks/playbooks.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { ProxyModule } from './proxy/proxy.module';
     OpenAIModule,
     GoogleModule,
     ProxyModule,
+    PlaybooksModule,
     PrismaModule,
   ],
   controllers: [AppController],
